@@ -60,7 +60,8 @@ jobs:
           # The import graph pictures (graph.json, not committed): the live file when it is of this
           # commit and of this graph.py VERSION, otherwise computed again below.
           gv=$(sed -n 's/^VERSION = \([0-9]*\).*/\1/p' graph.py)
-          if retry curl -fs "https://rh-shrink.github.io/graph.json?t=$RANDOM" -o site/graph.json &&
+          # no retries: a missing file is an answer
+          if curl -fs --max-time 30 "https://rh-shrink.github.io/graph.json?t=$RANDOM" -o site/graph.json &&
              python3 -c 'import json, sys; g = json.load(open("site/graph.json")); sys.exit(g.get("version") != int(sys.argv[1]) or g["now"]["sha"] != sys.argv[2])' "$gv" "$head"; then
             graph=current
           else

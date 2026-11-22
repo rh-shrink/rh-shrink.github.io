@@ -10,6 +10,7 @@ files they changed.
 """
 import argparse
 import json
+import multiprocessing
 import os
 import re
 import subprocess
@@ -20,9 +21,10 @@ import threading
 VERSION = 2
 STAT_KEYS = ("bytes", "lines", "code", "theorems", "defs", "imports")
 
+# possessive quantifiers (++, *+, ?+): no backtracking, a third faster on this source
 DECL = re.compile(
-    rb"^[ \t]*(?:@\[[^\]\n]*\][ \t]*)?"
-    rb"(?:(?:public|private|protected|noncomputable|partial|unsafe|nonrec|meta|scoped|local)[ \t]+)*"
+    rb"^[ \t]*+(?:@\[[^\]\n]*+\][ \t]*+)?+"
+    rb"(?:(?:public|private|protected|noncomputable|partial|unsafe|nonrec|meta|scoped|local)[ \t]++)*+"
     rb"(theorem|lemma|def|abbrev|instance|structure|inductive|class|opaque|axiom)\b",
     re.M,
 )
@@ -31,7 +33,10 @@ CODE_TOKEN = re.compile(rb'/-|--|"')
 COMMENT_TOKEN = re.compile(rb"/-|-/")
 STRING_END = re.compile(rb'(?:[^"\\]|\\.)*"', re.S)
 NOT_NEWLINE = re.compile(rb"[^\n]")
-CODE_LINE = re.compile(rb"^[ \t\r\f\v]*\S", re.M)
+# The first line of a file that is not part of its header (module, prelude, imports): Lean allows
+# imports only there.
+NOT_HEADER = re.compile(
+    rb"^[ \t]*(?!(?:public[ \t]+)?(?:meta[ \t]+)?import\b|module\b|prelude\b)\S", re.M)
 
 
 def without_comments(text: bytes) -> bytes:
@@ -67,18 +72,35 @@ def without_comments(text: bytes) -> bytes:
     return bytes(out)
 
 
+def header(text: bytes) -> bytes:
+    """The header of a file, comments blanked out, from a prefix of the file: long enough when
+    it holds a complete line that is not part of the header."""
+    k = 4096
+    while True:
+        part = without_comments(text[:k])
+        m = NOT_HEADER.search(part)
+        if m and (k >= len(text) or part.find(b"\n", m.start()) >= 0):
+            return part[: m.start()]
+        if k >= len(text):
+            return part
+        k *= 8
+
+
 def blob_stats(text: bytes) -> list:
     lines = text.count(b"\n") + (1 if text and not text.endswith(b"\n") else 0)
     code = without_comments(text)
     kinds = [m.group(1) for m in DECL.finditer(code)]
+    # code lines: the lines with something but white space (translate and split run in C)
+    parts = code.translate(None, b" \t\r\f\v").split(b"\n")
+    end = NOT_HEADER.search(code)
     theorems = sum(k in (b"theorem", b"lemma") for k in kinds)
     return [
         len(text),
         lines,
-        len(CODE_LINE.findall(code)),
+        len(parts) - parts.count(b""),
         theorems,
         len(kinds) - theorems,
-        len(IMPORT.findall(code)),
+        len(IMPORT.findall(code, 0, end.start() if end else len(code))),
     ]
 
 
@@ -125,6 +147,11 @@ def read_blobs(repo, blobs):
     proc.wait()
 
 
+def stats_of(item):
+    blob, text = item
+    return blob, blob_stats(text)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("repo")
@@ -149,12 +176,13 @@ def main():
     new = [c for c in new if c[0] not in known]
     print(f"{len(new)} new commit(s)", file=sys.stderr)
 
+    pool = multiprocessing.Pool()  # files are measured on all cores
     for sha, date, subject in new:
         files = lean_blobs(args.repo, sha, args.prefix)
         blobs = [b for _, b in files]
         missing = sorted(set(blobs) - cache.keys())
-        for blob, text in read_blobs(args.repo, missing):
-            cache[blob] = blob_stats(text)
+        for blob, stats in pool.imap_unordered(stats_of, read_blobs(args.repo, missing), chunksize=64):
+            cache[blob] = stats
         totals = [sum(cache[b][i] for b in blobs) for i in range(len(STAT_KEYS))]
         code = STAT_KEYS.index("code")
         dirs = {}
@@ -169,6 +197,7 @@ def main():
         print(f"{sha[:8]} {entry['lines']:>10} lines {len(missing):>6} new blobs",
               file=sys.stderr)
 
+    pool.close()
     with open(args.data, "w") as f:
         json.dump(data, f, separators=(",", ":"))
         f.write("\n")
