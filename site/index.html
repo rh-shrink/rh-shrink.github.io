@@ -234,8 +234,8 @@ function showTip({ chart, tooltip }) {
 }
 
 // Popups only near the drawn marks: within NEAR px of a line (as drawn, with its steps) or of a
-// bar. On a line, a horizontal stretch belongs to the commit that set that value, and the step
-// up or down to the commit that changed it. Returns all datasets at that commit.
+// bar. Along a line the popup takes the commit nearest in time, so it switches halfway between
+// two commits. Returns all datasets at that commit.
 const NEAR = touch ? 24 : 10;
 const distToBox = (px, py, x1, y1, x2, y2) => Math.hypot(
   px - Math.max(Math.min(x1, x2), Math.min(px, Math.max(x1, x2))),
@@ -254,8 +254,9 @@ Chart.Interaction.modes.nearLine = (chart, e) => {
         consider(Math.hypot(e.x - p.x, e.y - p.y), 0);
       } else {
         const q = pts[i - 1];
-        consider(distToBox(e.x, e.y, q.x, q.y, p.x, q.y), i - 1);  // flat stretch: previous commit
-        consider(distToBox(e.x, e.y, p.x, q.y, p.x, p.y), i);      // step: this commit
+        const nearer = e.x - q.x < p.x - e.x ? i - 1 : i;
+        consider(distToBox(e.x, e.y, q.x, q.y, p.x, q.y), nearer);  // flat stretch
+        consider(distToBox(e.x, e.y, p.x, q.y, p.x, p.y), i);       // step at this commit
       }
     });
   });
