@@ -9,6 +9,7 @@ Statistics are computed once per blob, so consecutive commits cost only the
 files they changed.
 """
 import argparse
+import bisect
 import collections
 import hashlib
 import itertools
@@ -22,11 +23,15 @@ import threading
 
 # 2: declarations and imports inside comments are not counted; code lines per folder.
 # 3: heartbeat overrides, omega/nlinarith, declaration lengths, repeated theorem statements.
-VERSION = 3
+# 4: finer declaration lengths.
+VERSION = 4
 STAT_KEYS = ("bytes", "lines", "code", "theorems", "defs", "imports", "heartbeats", "arith",
              "statements")
-# Declaration lengths in code lines, bin k holding 2^k to 2^(k+1) - 1 lines; the last bin is open.
-LENGTH_BINS = 10
+# Declaration lengths in code lines: bin k holds LENGTH_EDGES[k] up to the next edge (exclusive);
+# 1 to 7 one by one, then four bins per doubling (8, 10, 12, 14, 16, 20, ...); the last is open.
+LENGTH_EDGES = [1, 2, 3, 4, 5, 6, 7] + [o * f // 4 for o in (8, 16, 32, 64, 128, 256, 512, 1024, 2048)
+                                         for f in (4, 5, 6, 7)] + [4096]
+LENGTH_BINS = len(LENGTH_EDGES)
 
 # possessive quantifiers (++, *+, ?+): no backtracking, a third faster on this source
 DECL = re.compile(
@@ -133,7 +138,7 @@ def blob_stats(text: bytes):
         at.append(line)
     lengths = [0] * LENGTH_BINS
     for a, b in zip(at, at[1:] + [len(parts)]):
-        lengths[min(max(before[b] - before[a], 1).bit_length(), LENGTH_BINS) - 1] += 1
+        lengths[bisect.bisect_right(LENGTH_EDGES, max(before[b] - before[a], 1)) - 1] += 1
     hashes = []
     for m in THEOREM.finditer(code):
         s = statement(code, m.end())
@@ -160,6 +165,7 @@ def summary(stats):
     seen = collections.Counter(h for _, hs in stats for h in hs)
     out = dict(zip(STAT_KEYS, total))
     out["lengths"] = total[len(STAT_KEYS):]
+    out["length_edges"] = LENGTH_EDGES
     out["repeats"] = sum(seen.values()) - len(seen)
     return out
 
@@ -226,6 +232,7 @@ def main():
             data = json.load(f)
     if data.get("version") != VERSION:
         data = {"version": VERSION, "commits": []}
+    data["length_edges"] = LENGTH_EDGES
     known = {c["sha"] for c in data["commits"]}
 
     cache = {}

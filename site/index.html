@@ -200,7 +200,7 @@ footer {
 
   <section class="card" id="c-compare" hidden>
     <h2>Compared with Mathlib</h2>
-    <p class="hint">How many times as frequent as in Mathlib (Mathlib = 1×, the dashed line; log scale), originally and now.</p>
+    <p class="hint">How many times as frequent as in Mathlib (Mathlib = 1×, the solid line; log scale), originally and now.</p>
     <div class="legend"><span><i class="solid" style="background:var(--m-lines);opacity:.45"></i>Originally</span><span><i class="solid" style="background:var(--m-lines)"></i>Now</span></div>
     <div class="chart compare"><canvas></canvas></div>
   </section>
@@ -678,7 +678,9 @@ function render() {
   dOpts.scales = {
     [cat]: { type: "category", grid: { display: false }, border: { color: css("--grid") },
              ticks: { color: css("--text-muted"), autoSkip: false, maxRotation: 0 } },
-    [val]: { grid: { color: css("--grid") }, border: { display: false }, grace: "15%",
+    // the zero line black and thicker: bars grow from it, down for code lines removed
+    [val]: { grid: { color: c => (c.tick?.value === 0 ? css("--text-primary") : css("--grid")), lineWidth: c => (c.tick?.value === 0 ? 1.5 : 1) },
+             border: { display: false }, grace: "15%",
              ticks: { color: css("--text-muted"), maxTicksLimit: horizontal ? 4 : 6, callback: v => signed(v) } },
   };
   // Room for the value labels; no positive range for additions too small to see.
@@ -813,7 +815,8 @@ function renderCompare() {
   compareCharts.forEach(c => c.destroy());
   compareCharts = [];
   const ml = mathlib?.now?.text;
-  if (!ml || !commits.length || commits[0].repeats === undefined) return;
+  if (!ml || !commits.length || commits[0].repeats === undefined || lengthEdges.length !== commits[0].lengths.length
+      || String(ml.length_edges) !== String(lengthEdges)) return;
   const first = commits[0], last = commits[commits.length - 1];
   const blue = css("--m-lines"), muted = css("--text-muted"), grid = css("--grid");
   const sum = a => a.reduce((x, y) => x + y, 0);
@@ -822,7 +825,7 @@ function renderCompare() {
     { label: "maxHeartbeats overrides", short: ["heartbeat", "overrides"], value: v => 1e4 * v.heartbeats / v.code, unit: " per 10 000 code lines" },
     { label: "Repeated theorem statements", short: ["repeated", "statements"], value: v => 100 * v.repeats / v.statements, unit: "% of theorem statements" },
     { label: "omega and nlinarith", short: ["omega,", "nlinarith"], value: v => 1e4 * v.arith / v.code, unit: " per 10 000 code lines" },
-    { label: "Declarations of 64+ code lines", short: ["64+ line", "declarations"], value: v => 100 * sum(v.lengths.slice(6)) / sum(v.lengths), unit: "% of declarations" },
+    { label: "Declarations of 64+ code lines", short: ["64+ line", "declarations"], value: v => 100 * sum(v.lengths.slice(lengthEdges.indexOf(64))) / sum(v.lengths), unit: "% of declarations" },
   ];
   const fmt = v => (v >= 10 ? v.toFixed(0) : v >= 1 ? v.toFixed(1) : v.toPrecision(2));
   const points = v => ROWS.map((r, i) => ({ x: i, y: r.value(v) / r.value(ml), v: r.value(v), m: r.value(ml), unit: r.unit }));
@@ -830,49 +833,51 @@ function renderCompare() {
   const card = document.getElementById("c-compare");
   card.hidden = false;
   const top = Math.max(...[first, last].flatMap(v => points(v).map(p => p.y)));
-  // a line from originally to now in each row, and Mathlib's 1x
-  const guides = {
-    id: "guides",
-    beforeDatasetsDraw(chart) {
-      const { ctx, chartArea: a, scales: { y } } = chart, [o, n] = chart.data.datasets.map((d, k) => chart.getDatasetMeta(k).data);
+  // Bars growing from Mathlib's 1x (up: more than in Mathlib), originally and now side by side.
+  const baseline = {
+    id: "baseline",
+    afterDatasetsDraw(chart) {
+      const { ctx, chartArea: a, scales: { y } } = chart, one = y.getPixelForValue(1);
       ctx.save();
-      ctx.strokeStyle = muted; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
-      const one = y.getPixelForValue(1);
+      ctx.strokeStyle = css("--text-primary"); ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.moveTo(a.left, one); ctx.lineTo(a.right, one); ctx.stroke();
-      ctx.setLineDash([]); ctx.fillStyle = muted; ctx.font = "11px " + Chart.defaults.font.family; ctx.textAlign = "right";
+      ctx.fillStyle = muted; ctx.font = "11px " + Chart.defaults.font.family; ctx.textAlign = "right";
       ctx.fillText("Mathlib", a.right, one - 5);
-      ctx.strokeStyle = css("--border"); ctx.lineWidth = 2;
-      o.forEach((p, i) => { ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(n[i].x, n[i].y); ctx.stroke(); });
       ctx.restore();
     },
   };
-  const dot = (label, data, color) => ({ label, data, backgroundColor: color, borderWidth: 0, pointRadius: 6, pointHoverRadius: 8 });
+  const bars = (label, v, color) => ({ label, data: points(v).map(p => p.y), points: points(v), base: 1,
+    backgroundColor: color, borderRadius: 3, borderSkipped: "start", categoryPercentage: 0.55, barPercentage: 0.9 });
   compareCharts.push(new Chart(card.querySelector("canvas"), {
-    type: "scatter",
-    data: { datasets: [dot("Originally", points(first), blue + "73"), dot("Now", points(last), blue)] },
+    type: "bar",
+    data: { labels: names, datasets: [bars("Originally", first, blue + "73"), bars("Now", last, blue)] },
     options: {
       maintainAspectRatio: false, animation: false, devicePixelRatio: sharpness(),
       events: touch ? ["click"] : ["mousemove", "mouseout", "click"],
-      interaction: { mode: "nearest", intersect: false, axis: "xy" },
+      interaction: { mode: "index", intersect: false },
       layout: { padding: { top: 6 } },
       scales: {
         y: { type: "logarithmic", min: 0.5, max: 2 * top, grid: { color: grid }, border: { display: false },
              afterBuildTicks: scale => { scale.ticks = scale.ticks.filter(t => Number.isInteger(Math.log10(t.value))); },  // decades only
              ticks: { color: muted, callback: v => compact.format(v) + "×" } },
-        x: { type: "category", labels: names, offset: true, grid: { display: false }, border: { display: false },
+        x: { grid: { display: false }, border: { display: false },
              ticks: { color: css("--text-secondary"), maxRotation: 0, autoSkip: false } },
       },
       plugins: { legend: { display: false }, tooltip: { enabled: false, external: chartTip, callbacks: {
-        title: items => ROWS[items[0].raw.x].label,
-        label: item => `${item.dataset.label}: ${fmt(item.raw.v)}${item.raw.unit}, ${fmt(item.raw.y)}× Mathlib's ${fmt(item.raw.m)}`,
+        title: items => ROWS[items[0].dataIndex].label,
+        label: item => { const p = item.dataset.points[item.dataIndex]; return `${item.dataset.label}: ${fmt(p.v)}${p.unit}, ${fmt(p.y)}× Mathlib's ${fmt(p.m)}`; },
       } } },
     },
-    plugins: [guides],
+    plugins: [baseline],
   }));
 
   // Declarations by length, as shares of each project's declarations (log axis: the long tail)
-  const BINS = ["1", "2–3", "4–7", "8–15", "16–31", "32–63", "64–127", "128–255", "256–511", "512+"];
+  const E = lengthEdges;
+  const BINS = E.map((e, i) => (i === E.length - 1 ? `${e}+` : E[i + 1] - e === 1 ? `${e}` : `${e}–${E[i + 1] - 1}`));
   const sides = [["Originally", first.lengths], ["Now", last.lengths], ["Mathlib, for comparison", ml.lengths]];
+  // the axis goes down to the decade of the smallest share, so that a single very long
+  // declaration still shows
+  const least = Math.min(...sides.flatMap(([, l]) => l.filter(v => v > 0).map(v => 100 * v / sum(l))));
   const lbox = document.getElementById("c-lengths");
   lbox.hidden = false;
   const pair = lbox.querySelector(".pair");
@@ -882,15 +887,16 @@ function renderCompare() {
     const l = sides[k][1], n = sum(l);
     compareCharts.push(new Chart(canvas, {
       type: "bar",
-      data: { labels: BINS, datasets: [{ data: l.map(v => (v ? 100 * v / n : null)), counts: l, backgroundColor: blue, borderRadius: 3, categoryPercentage: 0.9, barPercentage: 0.9 }] },
+      data: { labels: BINS, datasets: [{ data: l.map(v => (v ? 100 * v / n : null)), counts: l, backgroundColor: blue, borderRadius: 1, categoryPercentage: 1, barPercentage: 0.85 }] },
       options: {
         maintainAspectRatio: false, animation: false, devicePixelRatio: sharpness(),
         events: touch ? ["click"] : ["mousemove", "mouseout", "click"],
         interaction: { mode: "index", intersect: false },
         scales: {
           x: { grid: { display: false }, border: { color: grid }, title: { display: true, text: "code lines per declaration", color: muted },
-               ticks: { color: muted, maxRotation: 0, autoSkip: true, autoSkipPadding: 6 } },
-          y: { type: "logarithmic", min: 0.001, max: 100, grid: { color: grid }, border: { display: false },
+               // labels only where a bin starts at 1, 8, 64, 512 or 4096 code lines
+               ticks: { color: muted, maxRotation: 0, autoSkip: false, callback: (v, i) => ([1, 8, 64, 512, 4096].includes(E[i]) ? String(E[i]) : "") } },
+          y: { type: "logarithmic", min: 10 ** Math.floor(Math.log10(least)), max: 100, grid: { color: grid }, border: { display: false },
                ticks: { color: muted, callback: v => (Number.isInteger(Math.log10(v)) ? (v >= 1 ? v : v.toPrecision(1)) + "%" : "") } },
         },
         plugins: { legend: { display: false }, tooltip: { enabled: false, external: chartTip, callbacks: {
@@ -958,7 +964,9 @@ const loadGraph = () => Promise.all([
 
 // Draws the page for these commits; does nothing when they are the ones already shown, so that a
 // check without news does not disturb a popup.
+let lengthEdges = [];
 function show(d) {
+  lengthEdges = d.length_edges || [];
   const latest = d.commits.map(c => ({ ...c, decls: c.theorems + c.defs }));
   if (!latest.length || latest[latest.length - 1].sha === commits[commits.length - 1]?.sha) return;
   commits = latest;
