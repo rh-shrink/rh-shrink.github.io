@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RH proof size</title>
+<meta name="description" content="Size of the Lean proof of the Riemann Hypothesis, per commit.">
+<style>
+:root {
+  color-scheme: light;
+  --surface-0: #f4f4f1;
+  --surface-1: #fcfcfb;
+  --border: #e4e3df;
+  --grid: #ecebe7;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #7a7974;
+  --m-lines: #2a78d6;
+  --m-decls: #eb6834;
+  --m-files: #1baf7a;
+  --m-imports: #eda100;
+  --down: #2a78d6;
+  --up: #e34948;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --surface-0: #111110;
+    --surface-1: #1a1a19;
+    --border: #2e2e2c;
+    --grid: #282826;
+    --text-primary: #f0efec;
+    --text-secondary: #c3c2b7;
+    --text-muted: #8d8c85;
+    --m-lines: #3987e5;
+    --m-decls: #d95926;
+    --m-files: #199e70;
+    --m-imports: #c98500;
+    --down: #3987e5;
+    --up: #e66767;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--surface-0); color: var(--text-primary);
+  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+main { max-width: 1120px; margin: 0 auto; padding: 28px 16px 48px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin-bottom: 20px; }
+h1 { font-size: 22px; font-weight: 650; margin: 0; letter-spacing: -0.01em; }
+header .meta { color: var(--text-muted); font-size: 13px; }
+a { color: inherit; text-decoration-color: var(--text-muted); text-underline-offset: 2px; }
+code { font-size: 0.92em; }
+.card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+.top { display: grid; grid-template-columns: minmax(220px, 1fr) 3fr; gap: 12px; margin-bottom: 12px; }
+.hero { display: flex; flex-direction: column; justify-content: center; }
+.hero .value { font-size: 56px; font-weight: 650; line-height: 1; letter-spacing: -0.02em; }
+.hero .label { color: var(--text-secondary); margin-top: 8px; }
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.tile .label { color: var(--text-secondary); font-size: 13px; display: flex; align-items: center; gap: 6px; }
+.swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.tile .value { font-size: 26px; font-weight: 600; margin-top: 2px; }
+.tile .delta { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
+.arrow-down { color: var(--down); }
+.arrow-up { color: var(--up); }
+h2 { font-size: 14px; font-weight: 600; margin: 0 0 10px; color: var(--text-secondary); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: -2px 0 10px; font-size: 13px; color: var(--text-secondary); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+.chart { position: relative; height: 320px; }
+.chart.small { height: 200px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0; }
+details { margin-top: 12px; }
+summary { cursor: pointer; color: var(--text-secondary); font-size: 14px; font-weight: 600; }
+details[open] summary { margin-bottom: 10px; }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; font-variant-numeric: tabular-nums; }
+th { color: var(--text-secondary); font-weight: 500; }
+th:nth-child(-n+2), td:nth-child(-n+2) { text-align: left; }
+td.subject { max-width: 380px; overflow: hidden; text-overflow: ellipsis; }
+.method { font-size: 14px; color: var(--text-secondary); }
+.method dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0 0 10px; }
+.method dt { color: var(--text-primary); font-weight: 500; }
+.method dd { margin: 0; }
+.method p { margin: 0 0 8px; }
+footer { margin-top: 20px; color: var(--text-muted); font-size: 12px; }
+@media (max-width: 760px) {
+  .top, .grid2 { grid-template-columns: 1fr; }
+  .tiles { grid-template-columns: 1fr 1fr; }
+  .hero .value { font-size: 48px; }
+  .method dl { grid-template-columns: 1fr; gap: 2px; }
+  .method dd { margin-bottom: 8px; }
+}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>RH proof size</h1>
+    <span class="meta"><a href="https://github.com/leanprover-community/riemann-hypothesis">leanprover-community/riemann-hypothesis</a> · <span id="updated"></span> · checked every 15 min</span>
+  </header>
+
+  <div class="top">
+    <section class="card hero">
+      <span class="value" id="hero"></span>
+      <span class="label">of the original lines left</span>
+    </section>
+    <section class="tiles" id="tiles"></section>
+  </div>
+
+  <section class="card">
+    <h2>Relative to the original</h2>
+    <div class="legend" id="legend"></div>
+    <div class="chart"><canvas id="chart-index"></canvas></div>
+  </section>
+
+  <div class="grid2" id="multiples"></div>
+
+  <section class="card">
+    <h2>Lines added and removed per commit</h2>
+    <div class="chart small"><canvas id="chart-delta"></canvas></div>
+  </section>
+
+  <details class="card">
+    <summary>Commits</summary>
+    <div class="table-wrap"><table id="table"></table></div>
+  </details>
+
+  <details class="card method" open>
+    <summary>How it's measured</summary>
+    <p>Every commit on <code>main</code> (first parent: one point per merged pull request). A GitHub
+    Action checks for new commits every 15 minutes.</p>
+    <dl>
+      <dt>Files</dt><dd><code>.lean</code> files under <code>src/</code></dd>
+      <dt>Lines</dt><dd>all lines of these files</dd>
+      <dt>Code lines</dt><dd>lines without blank lines and comments (<code>--</code>, nested <code>/- -/</code>)</dd>
+      <dt>Theorems</dt><dd>lines starting with <code>theorem</code> or <code>lemma</code></dd>
+      <dt>Definitions</dt><dd>lines starting with <code>def</code>, <code>abbrev</code>, <code>instance</code>, <code>structure</code>, <code>inductive</code>, <code>class</code>, <code>opaque</code> or <code>axiom</code></dd>
+      <dt>Import lines</dt><dd>lines starting with <code>import</code>, <code>public import</code> or <code>meta import</code></dd>
+      <dt>sorry</dt><dd>occurrences of the word <code>sorry</code></dd>
+    </dl>
+    <p>Declarations may carry attributes and modifiers (<code>@[simp] private theorem</code>).
+    All counts are regular expressions over the file contents read from git
+    (<a href="https://github.com/rh-shrink/rh-shrink.github.io/blob/main/collect.py">collect.py</a>), not
+    Lean metaprogramming: nothing is elaborated, so declarations generated by commands and macros
+    are not counted, and a match inside a comment is.</p>
+  </details>
+
+  <footer>Unofficial.</footer>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+const REPO = "https://github.com/leanprover-community/riemann-hypothesis";
+const EVENTS = [{ pr: 66, label: "Lean 4.36 port" }];
+const METRICS = [
+  { key: "lines",   label: "Lines",        color: "--m-lines",   sub: c => `${full.format(c.code)} code lines` },
+  { key: "decls",   label: "Declarations", color: "--m-decls",   sub: c => `${full.format(c.theorems)} theorems · ${full.format(c.defs)} definitions` },
+  { key: "files",   label: "Files",        color: "--m-files",   sub: c => fmtBytes(c.bytes) },
+  { key: "imports", label: "Import lines", color: "--m-imports", sub: c => `${(c.imports / c.files).toFixed(1)} per file` },
+];
+const compact = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 2 });
+const full = new Intl.NumberFormat("en");
+const fmtBytes = v => (v >= 1e9 ? (v / 1e9).toFixed(2) + " GB" : (v / 1e6).toFixed(1) + " MB");
+const fmtDate = t => new Date(t).toLocaleString("en", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+
+// Ticks on round hours or local midnights, about 6 per axis (3 on narrow charts).
+function timeTicks(scale) {
+  const hours = (scale.max - scale.min) / 3.6e6, target = scale.width < 400 ? 3 : 6;
+  const step = [1, 2, 3, 6, 12, 24, 48, 72, 168, 336, 720].find(h => hours / h <= target) || 720;
+  const d = new Date(scale.min);
+  d.setHours(0, 0, 0, 0);
+  const ticks = [];
+  for (; d.getTime() <= scale.max; d.setHours(d.getHours() + step))
+    if (d.getTime() >= scale.min) ticks.push({ value: d.getTime() });
+  scale.ticks = ticks;
+}
+const fmtTick = t => {
+  const d = new Date(t);
+  return d.getHours() === 0
+    ? d.toLocaleString("en", { month: "short", day: "numeric" })
+    : d.toLocaleString("en", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+};
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const signed = (v, f = compact.format) => (v < 0 ? "−" : v > 0 ? "+" : "±") + f(Math.abs(v));
+const commitLabel = c => (c.pr ? `#${c.pr}` : c.sha.slice(0, 7));
+const commitUrl = c => (c.pr ? `${REPO}/pull/${c.pr}` : `${REPO}/commit/${c.sha}`);
+const escapeHtml = s => s.replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+
+let commits = [], charts = [];
+
+// Vertical crosshair at the hovered x, and markers for EVENTS.
+const overlay = {
+  id: "overlay",
+  afterDatasetsDraw(chart) {
+    const { ctx, chartArea: a, scales: { x } } = chart;
+    ctx.save();
+    for (const ev of chart.options.events_ || []) {
+      const px = x.getPixelForValue(ev.x);
+      if (px < a.left || px > a.right) continue;
+      ctx.strokeStyle = css("--text-muted"); ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke();
+      ctx.setLineDash([]); ctx.fillStyle = css("--text-muted"); ctx.font = "11px " + Chart.defaults.font.family;
+      ctx.textAlign = px > a.right - 90 ? "right" : "left";
+      ctx.fillText(ev.label, px + (ctx.textAlign === "left" ? 4 : -4), a.top + 10);
+    }
+    const act = chart.tooltip?.getActiveElements?.() || [];
+    if (act.length && chart.config.type === "line") {
+      const px = act[0].element.x;
+      ctx.strokeStyle = css("--text-muted"); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke();
+    }
+    ctx.restore();
+  },
+};
+
+// Name labels at the right end of each line, pushed apart when they collide.
+const endLabels = {
+  id: "endLabels",
+  afterDatasetsDraw(chart) {
+    if (!chart.options.endLabels_) return;
+    const { ctx, chartArea: a } = chart;
+    const labels = chart.data.datasets.map((ds, i) => {
+      const pts = chart.getDatasetMeta(i).data;
+      const p = pts[pts.length - 1];
+      return { y: p.y, x: p.x, text: ds.label, color: ds.borderColor };
+    }).sort((p, q) => p.y - q.y);
+    for (let i = 1; i < labels.length; i++) labels[i].y = Math.max(labels[i].y, labels[i - 1].y + 15);
+    ctx.save();
+    ctx.font = "12px " + Chart.defaults.font.family; ctx.textBaseline = "middle";
+    for (const l of labels) {
+      ctx.fillStyle = l.color; ctx.fillRect(a.right + 8, l.y - 1.5, 10, 3);
+      ctx.fillStyle = css("--text-secondary"); ctx.fillText(l.text, a.right + 22, l.y);
+    }
+    ctx.restore();
+  },
+};
+
+function baseOptions(yTicks) {
+  const xs = commits.map(c => Date.parse(c.date));
+  const muted = css("--text-muted"), grid = css("--grid");
+  return {
+    maintainAspectRatio: false, animation: false,
+    interaction: { mode: "index", intersect: false },
+    scales: {
+      x: { type: "linear", min: xs[0], max: xs[xs.length - 1], grid: { display: false }, border: { color: grid },
+           afterBuildTicks: timeTicks, ticks: { color: muted, maxRotation: 0, callback: v => fmtTick(v) } },
+      y: { grid: { color: grid }, border: { display: false }, grace: "8%",
+           ticks: { color: muted, maxTicksLimit: 6, callback: yTicks } },
+    },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: css("--surface-1"), titleColor: css("--text-primary"), bodyColor: css("--text-secondary"),
+        borderColor: css("--border"), borderWidth: 1, padding: 10, boxPadding: 4, usePointStyle: true,
+        titleFont: { weight: "600" },
+      },
+    },
+    events_: EVENTS.map(ev => {
+      const c = commits.find(c => c.pr === ev.pr);
+      return c && { x: Date.parse(c.date), label: ev.label };
+    }).filter(Boolean),
+    onClick: (e, els, chart) => {
+      if (els.length) window.open(commitUrl(commits[els[0].index]), "_blank");
+    },
+  };
+}
+
+function lineDataset(m, values, fill) {
+  const color = css(m.color);
+  return {
+    label: m.label, data: values, borderColor: color, backgroundColor: color, borderWidth: 2,
+    stepped: "before", pointRadius: 0, pointHoverRadius: 5,
+    pointHoverBorderColor: css("--surface-1"), pointHoverBorderWidth: 2, pointStyle: "rectRounded",
+    fill: fill ? { target: "start" } : false,
+    ...(fill ? { backgroundColor: ctx => gradient(ctx, color) } : {}),
+  };
+}
+
+function gradient(ctx, color) {
+  const { chart } = ctx, a = chart.chartArea;
+  if (!a) return color + "22";
+  const g = chart.ctx.createLinearGradient(0, a.top, 0, a.bottom);
+  g.addColorStop(0, color + "40"); g.addColorStop(1, color + "05");
+  return g;
+}
+
+function render() {
+  charts.forEach(c => c.destroy());
+  charts = [];
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+  Chart.defaults.font.size = 12;
+  Chart.defaults.color = css("--text-secondary");
+
+  const first = commits[0], last = commits[commits.length - 1];
+  const xs = commits.map(c => Date.parse(c.date));
+
+  document.getElementById("hero").textContent = (100 * last.lines / first.lines).toFixed(1) + "%";
+  document.getElementById("updated").textContent = "last commit " + fmtDate(last.date);
+
+  // Tiles
+  const tile = (label, color, value, d, base, title, fmtD = compact.format) => {
+    const arrow = d < 0 ? '<span class="arrow-down">▼</span> ' : d > 0 ? '<span class="arrow-up">▲</span> ' : "";
+    const pct = base && d ? ` (${(100 * d / base).toFixed(1)}%)` : "";
+    return `<div class="card tile"><div class="label">${color ? `<i class="swatch" style="background:${css(color)}"></i>` : ""}${label}</div>
+      <div class="value" title="${title}">${value}</div><div class="delta">${arrow}${signed(d, fmtD)}${pct}</div></div>`;
+  };
+  document.getElementById("tiles").innerHTML =
+    METRICS.map(m => tile(m.label, m.color, compact.format(last[m.key]), last[m.key] - first[m.key], first[m.key], full.format(last[m.key]))).join("") +
+    tile("Size", null, fmtBytes(last.bytes), last.bytes - first.bytes, first.bytes, full.format(last.bytes) + " bytes", fmtBytes) +
+    tile("sorry", null, full.format(last.sorries), last.sorries - first.sorries, 0, "");
+
+  // Indexed chart
+  document.getElementById("legend").innerHTML = METRICS.map(m =>
+    `<span><i style="background:${css(m.color)}"></i>${m.label}</span>`).join("");
+  const idxOpts = baseOptions(v => v + "%");
+  idxOpts.endLabels_ = innerWidth >= 600;
+  if (idxOpts.endLabels_) idxOpts.layout = { padding: { right: 100 } };
+  idxOpts.plugins.tooltip.callbacks = {
+    title: items => `${commitLabel(commits[items[0].dataIndex])} · ${fmtDate(xs[items[0].dataIndex])}`,
+    label: item => {
+      const m = METRICS[item.datasetIndex], c = commits[item.dataIndex];
+      return `${m.label}: ${item.raw.y.toFixed(1)}%  (${full.format(c[m.key])})`;
+    },
+    afterBody: items => commits[items[0].dataIndex].subject,
+  };
+  charts.push(new Chart(document.getElementById("chart-index"), {
+    type: "line",
+    data: { datasets: METRICS.map(m => lineDataset(m, commits.map((c, i) => ({ x: xs[i], y: 100 * c[m.key] / first[m.key] })), false)) },
+    options: idxOpts, plugins: [overlay, endLabels],
+  }));
+
+  // Small multiples
+  const box = document.getElementById("multiples");
+  box.innerHTML = METRICS.map(m => `<section class="card"><h2>${m.label}</h2><div class="chart small"><canvas></canvas></div></section>`).join("");
+  METRICS.forEach((m, j) => {
+    const opts = baseOptions(v => compact.format(v));
+    opts.plugins.tooltip.callbacks = {
+      title: items => `${commitLabel(commits[items[0].dataIndex])} · ${fmtDate(xs[items[0].dataIndex])}`,
+      label: item => `${full.format(item.raw.y)}  (${(100 * item.raw.y / first[m.key]).toFixed(1)}% of original)`,
+      afterLabel: item => m.sub(commits[item.dataIndex]),
+      afterBody: items => commits[items[0].dataIndex].subject,
+    };
+    charts.push(new Chart(box.querySelectorAll("canvas")[j], {
+      type: "line",
+      data: { datasets: [lineDataset(m, commits.map((c, i) => ({ x: xs[i], y: c[m.key] })), true)] },
+      options: opts, plugins: [overlay],
+    }));
+  });
+
+  // Per-commit change in lines
+  const deltas = commits.slice(1).map((c, i) => ({ c, d: c.lines - commits[i].lines }));
+  const dOpts = baseOptions(v => signed(v));
+  dOpts.scales.x = { type: "category", grid: { display: false }, border: { color: css("--grid") },
+                     ticks: { color: css("--text-muted"), maxTicksLimit: 12, maxRotation: 0 } };
+  dOpts.events_ = [];
+  dOpts.interaction = { mode: "index", intersect: false };
+  dOpts.plugins.tooltip.callbacks = {
+    title: items => `${commitLabel(deltas[items[0].dataIndex].c)} · ${fmtDate(deltas[items[0].dataIndex].c.date)}`,
+    label: item => `${signed(item.raw, v => full.format(v))} lines`,
+    afterBody: items => deltas[items[0].dataIndex].c.subject,
+  };
+  dOpts.onClick = (e, els) => { if (els.length) window.open(commitUrl(deltas[els[0].index].c), "_blank"); };
+  charts.push(new Chart(document.getElementById("chart-delta"), {
+    type: "bar",
+    data: {
+      labels: deltas.map(x => commitLabel(x.c)),
+      datasets: [{
+        data: deltas.map(x => x.d || null),
+        backgroundColor: deltas.map(x => css(x.d > 0 ? "--up" : "--down")),
+        borderRadius: 4, borderSkipped: "start", minBarLength: 2,
+        maxBarThickness: 18, categoryPercentage: 0.9, barPercentage: 0.85,
+      }],
+    },
+    options: dOpts,
+  }));
+
+  // Table
+  const rows = commits.slice().reverse().map((c, i, arr) => {
+    const prev = arr[i + 1];
+    return `<tr><td><a href="${commitUrl(c)}">${commitLabel(c)}</a></td>
+      <td class="subject" title="${escapeHtml(c.subject)}">${escapeHtml(c.subject)}</td>
+      <td>${fmtDate(c.date)}</td><td>${full.format(c.lines)}</td>
+      <td>${prev ? signed(c.lines - prev.lines, v => full.format(v)) : ""}</td>
+      <td>${full.format(c.decls)}</td><td>${full.format(c.files)}</td><td>${full.format(c.imports)}</td></tr>`;
+  }).join("");
+  document.getElementById("table").innerHTML =
+    `<thead><tr><th>Commit</th><th>Title</th><th>Date</th><th>Lines</th><th>Δ lines</th><th>Declarations</th><th>Files</th><th>Imports</th></tr></thead><tbody>${rows}</tbody>`;
+}
+
+function start(d) {
+  commits = d.commits.map(c => ({ ...c, decls: c.theorems + c.defs }));
+  if (!commits.length) return;
+  render();
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+}
+
+fetch("data.json", { cache: "no-store" }).then(r => r.json()).then(start);
+</script>
+</body>
+</html>
