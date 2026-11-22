@@ -563,21 +563,22 @@ function render() {
     `<thead><tr><th>Commit</th><th>Title</th><th>Date</th><th>Lines</th><th>Δ lines</th><th>Declarations</th><th>Files</th><th>Import statements</th></tr></thead><tbody>${rows}</tbody>`;
 }
 
-function start(d) {
-  commits = d.commits.map(c => ({ ...c, decls: c.theorems + c.defs }));
-  if (!commits.length) return;
+// Draws the page for these commits; does nothing when they are the ones already shown, so that a
+// check without news does not disturb a popup.
+function show(d) {
+  const latest = d.commits.map(c => ({ ...c, decls: c.theorems + c.defs }));
+  if (!latest.length || latest[latest.length - 1].sha === commits[commits.length - 1]?.sha) return;
+  commits = latest;
   render();
-  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
 }
-
-// A fresh query string on each load bypasses the CDN cache of GitHub Pages.
-const fresh = "?t=" + Date.now();
-fetch("data.json" + fresh, { cache: "no-store" }).then(r => r.json()).then(start);
+// A fresh query string bypasses the CDN cache of GitHub Pages.
+const loadData = () => fetch("data.json?t=" + Date.now(), { cache: "no-store" }).then(r => r.json()).then(show).catch(() => {});
+loadData();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => commits.length && render());
 
 // The time of the last poll, written by the workflow at each poll (every run deploys it).
 // GitHub may delay or skip scheduled runs: when the schedule has not polled for 30 minutes (two
-// missed polls), say so; polls from other runs (pushes to this site) do not count. Checked again
-// every 5 minutes, so a page left open shows it too.
+// missed polls), say so; polls from other runs (pushes to this site) do not count.
 function showPolled() {
   fetch("polled.json?t=" + Date.now(), { cache: "no-store" })
     .then(r => r.json())
@@ -589,7 +590,8 @@ function showPolled() {
     .catch(() => {});
 }
 showPolled();
-setInterval(showPolled, 5 * 60e3);
+// A page left open checks every 2 minutes for new commits and for the poll time.
+setInterval(() => { loadData(); showPolled(); }, 2 * 60e3);
 </script>
 </body>
 </html>
