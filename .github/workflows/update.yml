@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       source:
-        description: Who starts this run
+        description: Who starts this run (cron-job.org sends it; GitHub rejects undeclared inputs)
         default: manual
   push:
     branches: [main]
@@ -34,6 +34,7 @@ jobs:
     timeout-minutes: 30  # a hanging run must not hold up the queued ones; measuring all commits takes ~5 min
     permissions:
       contents: write
+      actions: read  # the run list, for the time of the last timer run
     outputs:
       deploy: ${{ steps.upload.outcome == 'success' }}
     steps:
@@ -42,19 +43,20 @@ jobs:
       - name: Check for new commits
         id: check
         env:
-          DISPATCH_SOURCE: ${{ inputs.source }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           eval "$RETRY"
           head=$(retry git ls-remote "$SOURCE" refs/heads/main | cut -f1)
           # Data of another version is measured again (collect.py VERSION).
           last=$(python3 -c 'import json, collect; d = json.load(open("site/data.json")); c = d["commits"]; print(c[-1]["sha"] if c and d.get("version") == collect.VERSION else "")')
           echo "source main: $head, last measured: $last"
-          # The page shows "polled" as "last at" (any run), and warns when "scheduled" (the last run
-          # started by the schedule, carried over from the live file otherwise) is over 30 min old.
+          # The page shows "polled" as "last at" (any run), and warns when "scheduled" is over 30 min
+          # old: the start of the last run of the timer (cron-job.org's dispatches, or GitHub's
+          # schedule), from GitHub's run list, which includes this run. (Carrying it over from the
+          # live polled.json failed: right after a deploy the site may still serve the old file.)
           now=$(date -u +%FT%TZ)
-          live=$(retry curl -fs "https://rh-shrink.github.io/polled.json?t=$RANDOM" || echo '{}')
-          scheduled=$(python3 -c 'import json, sys; print(json.loads(sys.argv[1]).get("scheduled", ""))' "$live")
-          if [ "$GITHUB_EVENT_NAME" = schedule ] || [ "$DISPATCH_SOURCE" = external-cron ]; then scheduled=$now; fi
+          scheduled=$(retry gh run list -R "$GITHUB_REPOSITORY" --workflow update.yml --limit 40 --json event,createdAt \
+            --jq '[.[] | select(.event == "schedule" or .event == "workflow_dispatch")][0].createdAt // ""')
           echo "{\"polled\":\"$now\",\"scheduled\":\"$scheduled\"}" > site/polled.json
           cat site/polled.json
           # The import graph pictures (graph.json, not committed): the live file when it is of this
@@ -103,7 +105,8 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             git commit --quiet -m "Update data"
-            retry git push --quiet
+            # a push to this repository since the checkout (a change of the page) is pulled first
+            retry sh -c 'git pull --rebase --quiet && git push --quiet'
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
