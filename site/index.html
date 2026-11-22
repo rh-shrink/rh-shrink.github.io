@@ -114,6 +114,7 @@ th:first-child, td:first-child { position: sticky; left: 0; background: var(--su
 .folders .bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 0 4px 4px 0; }
 .folders .bar .orig { background: var(--m-lines-tint); }
 .folders .bar .now { background: var(--m-lines); }
+.folders .bar .mark { width: 2px; margin-left: -1px; top: -2px; bottom: -2px; border-radius: 1px; background: var(--text-primary); }
 .folders .num { text-align: right; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .legend i.tint { background: var(--m-lines-tint) !important; height: 10px; border-radius: 3px; }
 .legend i.solid { height: 10px; border-radius: 3px; }
@@ -568,22 +569,27 @@ function render() {
     }));
   });
 
-  // Code lines by folder: now and originally, largest originally first.
+  // Code lines by folder: now and originally, largest first (by the larger of the two, so that a
+  // big new folder is not at the end). A folder that is gone has only its light bar; a new one
+  // only its dark bar; for one that grew, a mark at its original length (unless too short to see).
   const card = document.getElementById("folders-card");
   card.hidden = !(first.dirs && last.dirs);
   if (!card.hidden) {
     const names = [...new Set([...Object.keys(first.dirs), ...Object.keys(last.dirs)])];
     const was = n => first.dirs[n] || 0, now = n => last.dirs[n] || 0;
-    names.sort((a, b) => was(b) - was(a) || now(b) - now(a));
+    const big = n => Math.max(was(n), now(n));
+    names.sort((a, b) => big(b) - big(a) || a.localeCompare(b));
     const top = Math.max(...names.map(n => Math.max(was(n), now(n))));
     const pct = v => (100 * v / top).toFixed(2) + "%";
     document.getElementById("folders").innerHTML = names.map(n => {
       const d = now(n) - was(n);
-      const change = !was(n) ? "new" : !now(n) ? "removed" : d === 0 ? "unchanged"
-        : `<span class="arrow">${d < 0 ? "↓" : "↑"}</span> ${Math.abs(100 * d / was(n)).toFixed(1)}%`;
+      const num = !was(n) ? `${compact.format(now(n))} · new`
+        : !now(n) ? `removed, originally ${compact.format(was(n))}`
+        : `${compact.format(now(n))} · ` + (d === 0 ? "unchanged"
+          : `<span class="arrow">${d < 0 ? "↓" : "↑"}</span> ${Math.abs(100 * d / was(n)).toFixed(1)}%`);
       return `<span class="name">${n ? escapeHtml(n) : "files directly in src/"}</span>
-        <span class="bar" title="now ${full.format(now(n))}, originally ${full.format(was(n))}"><i class="orig" style="width:${pct(was(n))}"></i><i class="now" style="width:${pct(now(n))}"></i></span>
-        <span class="num">${compact.format(now(n))} · ${change}</span>`;
+        <span class="bar" title="now ${full.format(now(n))}, originally ${full.format(was(n))}"><i class="orig" style="width:${pct(was(n))}"></i><i class="now" style="width:${pct(now(n))}"></i>${now(n) > was(n) && was(n) > top / 100 ? `<i class="mark" style="left:${pct(was(n))}"></i>` : ""}</span>
+        <span class="num">${num}</span>`;
     }).join("");
   }
 
