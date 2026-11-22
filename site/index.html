@@ -19,7 +19,7 @@
   --m-decls: #eb6834;
   --m-files: #1baf7a;
   --m-imports: #eda100;
-  --m-total: #8f8e88;
+  --m-extra: #8f8e88;
   --down: #2a78d6;
   --up: #e34948;
 }
@@ -37,7 +37,7 @@
     --m-decls: #d95926;
     --m-files: #199e70;
     --m-imports: #c98500;
-    --m-total: #7d7c76;
+    --m-extra: #7d7c76;
     --down: #3987e5;
     --up: #e66767;
   }
@@ -190,9 +190,11 @@ footer {
 const REPO = "https://github.com/leanprover-community/riemann-hypothesis";
 const METRICS = [
   { key: "code",    label: "Code lines",   color: "--m-lines",   sub: c => `${Math.round(c.code / c.files)} per file`,
-    // Its own chart also shows the total lines, in gray (not in the chart relative to the original).
-    also: { key: "lines", label: "Total lines", color: "--m-total" } },
-  { key: "decls",   label: "Declarations", color: "--m-decls",   sub: c => `${full.format(c.theorems)} of them theorems` },
+    // Its own chart (titled "Lines") also shows the total lines, in gray; not in the chart relative
+    // to the original. Likewise the declarations chart shows the theorems.
+    title: "Lines", also: { key: "lines", label: "Total lines", color: "--m-extra" } },
+  { key: "decls",   label: "Declarations", color: "--m-decls",
+    also: { key: "theorems", label: "Theorems", color: "--m-extra" } },
   { key: "files",   label: "Files",        color: "--m-files",   sub: c => fmtBytes(c.bytes) },
   { key: "imports", label: "Import statements", color: "--m-imports", sub: c => `${(c.imports / c.files).toFixed(1)} per file` },
 ];
@@ -476,8 +478,8 @@ function render() {
   };
   document.getElementById("tiles").innerHTML =
     METRICS.map(m => tile(m.label, m.color, m.key)).join("") +
-    tile("Theorems", null, "theorems") +
-    tile("Total lines", "--m-total", "lines");
+    tile("Theorems", "--m-extra", "theorems") +
+    tile("Total lines", "--m-extra", "lines");
 
   // Indexed chart
   document.getElementById("legend").innerHTML = METRICS.map(m =>
@@ -512,7 +514,7 @@ function render() {
   // Small multiples
   const box = document.getElementById("multiples");
   const key = m => `<span><i style="background:${css(m.color)}"></i>${m.label}</span>`;
-  box.innerHTML = METRICS.map(m => `<section class="card"><h2>${m.also ? "Lines" : m.label}</h2>` +
+  box.innerHTML = METRICS.map(m => `<section class="card"><h2>${m.title || m.label}</h2>` +
     (m.also ? `<div class="legend">${key(m)}${key(m.also)}</div>` : "") +
     `<div class="chart small"><canvas></canvas></div></section>`).join("");
   METRICS.forEach((m, j) => {
@@ -524,7 +526,7 @@ function render() {
         const s = series[item.datasetIndex];
         return `${m.also ? s.label + ": " : ""}${full.format(item.raw.y)}  (${(100 * item.raw.y / first[s.key]).toFixed(1)}% of original)`;
       },
-      afterLabel: item => (item.datasetIndex === 0 ? m.sub(commits[item.dataIndex]) : ""),
+      afterLabel: item => (item.datasetIndex === 0 && m.sub ? m.sub(commits[item.dataIndex]) : ""),
       afterBody: items => commits[items[0].dataIndex].subject,
     };
     charts.push(new Chart(box.querySelectorAll("canvas")[j], {
