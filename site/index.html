@@ -294,7 +294,7 @@ document.addEventListener("click", e => {
 document.addEventListener("keydown", e => { if (e.key === "Escape") unpin(); });
 tip.addEventListener("click", () => setTimeout(unpin));
 
-// Vertical crosshair at the hovered x, and markers for EVENTS.
+// Vertical crosshair at the hovered x, and triangles on the x axis for EVENTS.
 const overlay = {
   id: "overlay",
   afterDatasetsDraw(chart) {
@@ -303,11 +303,13 @@ const overlay = {
     for (const ev of chart.options.events_ || []) {
       const px = x.getPixelForValue(ev.x);
       if (px < a.left || px > a.right) continue;
-      ctx.strokeStyle = css("--text-muted"); ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke();
-      ctx.fillStyle = css("--text-muted"); ctx.font = "11px " + Chart.defaults.font.family;
-      ctx.textAlign = px > a.right - 90 ? "right" : "left";
-      ctx.fillText(ev.label, px + (ctx.textAlign === "left" ? 4 : -4), a.top + 10);
+      // A small triangle on the x axis with its label, clear of the lines higher up.
+      ctx.fillStyle = css("--text-muted");
+      ctx.beginPath(); ctx.moveTo(px - 5, a.bottom); ctx.lineTo(px + 5, a.bottom); ctx.lineTo(px, a.bottom - 7);
+      ctx.closePath(); ctx.fill();
+      ctx.font = "11px " + Chart.defaults.font.family;
+      ctx.textAlign = px > a.right - 90 ? "right" : "left"; ctx.textBaseline = "alphabetic";
+      ctx.fillText(ev.label, px + (ctx.textAlign === "left" ? 8 : -8), a.bottom - 2);
     }
     const act = chart.tooltip?.getActiveElements?.() || [];
     if ((pinned?.chart === chart || act.length) && chart.config.type === "line") {
