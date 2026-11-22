@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>RH proof size</title>
+<title>RH proof size (unofficial)</title>
 <meta name="description" content="Size of the Lean proof of the Riemann Hypothesis, per commit.">
 <style>
 :root {
@@ -48,6 +48,10 @@ body {
 main { max-width: 1120px; margin: 0 auto; padding: 28px 16px 48px; }
 header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin-bottom: 20px; }
 h1 { font-size: 22px; font-weight: 650; margin: 0; letter-spacing: -0.01em; }
+.badge {
+  font-size: 11px; font-weight: 500; letter-spacing: 0.02em; color: var(--text-secondary);
+  border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; vertical-align: 3px; margin-left: 4px;
+}
 header .meta { color: var(--text-muted); font-size: 13px; }
 a { color: inherit; text-decoration-color: var(--text-muted); text-underline-offset: 2px; }
 code { font-size: 0.92em; }
@@ -96,7 +100,6 @@ tr.unchanged td, tr.unchanged a { color: var(--text-muted); }
 .tip .open { margin-top: 6px; color: var(--text-muted); }
 .tip.pinned { pointer-events: auto; cursor: pointer; border-color: var(--text-muted); }
 .tip.pinned:hover .open { color: var(--text-primary); text-decoration: underline; }
-footer { margin-top: 20px; color: var(--text-muted); font-size: 12px; }
 @media (max-width: 760px) {
   .top, .grid2 { grid-template-columns: 1fr; }
   .tiles { grid-template-columns: 1fr 1fr; }
@@ -109,7 +112,7 @@ footer { margin-top: 20px; color: var(--text-muted); font-size: 12px; }
 <body>
 <main>
   <header>
-    <h1>RH proof size</h1>
+    <h1>RH proof size <span class="badge">unofficial</span></h1>
     <span class="meta"><a href="https://github.com/leanprover-community/riemann-hypothesis">leanprover-community/riemann-hypothesis</a> · <span id="updated"></span> · checked every 15 min</span>
   </header>
 
@@ -159,7 +162,6 @@ footer { margin-top: 20px; color: var(--text-muted); font-size: 12px; }
     and a match inside a comment is.</p>
   </details>
 
-  <footer>Unofficial.</footer>
 </main>
 
 <a id="tip" class="tip" target="_blank" rel="noopener" hidden></a>
