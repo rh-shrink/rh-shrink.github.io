@@ -225,13 +225,11 @@ function showTip({ chart, tooltip }) {
     `<div class="open">Click to select</div>`;
   tip.href = commitUrl(commitAt(chart, tooltip.dataPoints[0].dataIndex));
   tip.hidden = false;
-  // Above the chart, centred on the commit, so the lines stay visible; below the chart only
-  // when there is no room above it on screen.
+  // Always above the chart, centred on the commit, so the lines stay visible.
   const r = chart.canvas.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
   const right = scrollX + document.documentElement.clientWidth - 8;
   const x = Math.max(scrollX + 8, Math.min(r.left + scrollX + tooltip.caretX - w / 2, right - w));
-  let y = r.top + scrollY - h - 6;
-  if (y < scrollY + 4) y = r.bottom + scrollY + 6;
+  const y = r.top + scrollY - h - 6;
   tip.style.left = x + "px"; tip.style.top = y + "px";
 }
 
@@ -278,6 +276,7 @@ function pinTip(e, els, chart) {
   if (tip.hidden) return;
   pinned = { chart, x: els[0].element.x };
   tip.classList.add("pinned");
+  if (tip.getBoundingClientRect().top < 0) scrollBy({ top: tip.getBoundingClientRect().top - 8, behavior: "smooth" });
   tip.querySelector(".open").textContent = `Open ${commitLabel(commitAt(chart, els[0].index))} on GitHub ↗`;
 }
 
