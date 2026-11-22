@@ -381,7 +381,9 @@ function baseOptions(yTicks) {
     interaction: { mode: "nearLine" },
     onHover: (e, els, chart) => { chart.canvas.style.cursor = els.length ? "pointer" : ""; },
     scales: {
-      x: { type: "linear", min: xs[0], max: xs[xs.length - 1], grid: { display: false }, border: { color: grid },
+      // Tick marks at the dates, below the axis only.
+      x: { type: "linear", min: xs[0], max: xs[xs.length - 1], border: { color: grid },
+           grid: { drawOnChartArea: false, drawTicks: true, tickLength: 5, color: muted },
            afterBuildTicks: timeTicks, ticks: { color: muted, maxRotation: 0, callback: v => fmtTick(v) } },
       y: { grid: { color: grid }, border: { display: false },
            ticks: { color: muted, maxTicksLimit: 6, callback: yTicks } },
