@@ -4,13 +4,15 @@
 Usage: graph.py REPO OUT.json [--ref main] [--prefix src/] [--package NAME.] [--only]
 
 Writes, for the first first-parent commit ("original") and the last one ("now"):
-- profile: the number of modules at each import depth (depth 0: imports no module of the
-  project; otherwise one more than the deepest module it imports), so its length is the
-  longest import chain;
-- reach: for every module, the number of modules that import it directly or indirectly, i.e.
-  that are rebuilt when it changes (exact), sorted, sampled for the chart;
 - matrix: imports between modules, the modules in path order (so grouped by folder), counted
-  in BINS x BINS cells.
+  in BINS x BINS cells;
+- build: an ideal build on as many cores as needed, each module starting as soon as the modules
+  it imports are built and taking time proportional to its code lines (an assumption: real
+  build times depend mostly on the proofs): the total work, the shortest possible build (span),
+  the number of modules building at each of SAMPLES moments, and the module of the longest
+  import chain building then;
+- tree: the folders, LEVELS deep, with their code lines, modules and when they are built in
+  the ideal build (as shares of the span).
 Only imports of modules of the project count (not Mathlib and other dependencies).
 
 With --only, just the commit REF, as "now" (used once for Mathlib, the comparison on the site:
@@ -24,18 +26,20 @@ import time
 
 import numpy as np
 
-from collect import git, header, read_blobs
+from collect import git, header, read_blobs, without_comments
 
 IMPORT_LINE = re.compile(
     rb"^(?:public[ \t]+)?(?:meta[ \t]+)?import[ \t]+(?:all[ \t]+)?([^\n]*)", re.M)
-VERSION = 2  # of the output; the workflow computes it again when this changes
+VERSION = 3  # of the output; the workflow computes it again when this changes
 BINS = 160
-SAMPLES = 400
+SAMPLES = 300
+LEVELS = 4
+SMALLEST = 0.0005  # folders with a smaller share of the code lines are left out of the tree
 
 
 def modules(repo, sha, prefix, package=""):
-    """Module names below prefix (path order) and the project modules each imports (indices);
-    imports name a module as package + its name."""
+    """Module names below prefix (path order), the project modules each imports (indices) and
+    the code lines of each; imports name a module as package + its name."""
     out = git(repo, "ls-tree", "-r", "-z", "--full-tree", sha, "--", prefix)
     paths, blobs = [], []
     for entry in out.split(b"\0"):
@@ -51,6 +55,10 @@ def modules(repo, sha, prefix, package=""):
     names = [p[len(prefix):-len(".lean")].replace("/", ".") for p in paths]
     index = {package + n: i for i, n in enumerate(names)}
     texts = dict(read_blobs(repo, sorted(set(blobs))))
+    lines = {}
+    for b, text in texts.items():
+        parts = without_comments(text).translate(None, b" \t\r\f\v").split(b"\n")
+        lines[b] = len(parts) - parts.count(b"")
     imports = []
     for b in blobs:
         found = set()
@@ -59,7 +67,7 @@ def modules(repo, sha, prefix, package=""):
                 if name in index:
                     found.add(index[name])
         imports.append(sorted(found))
-    return names, imports
+    return names, imports, [lines[b] for b in blobs]
 
 
 def depths(imports):
@@ -86,56 +94,63 @@ def depths(imports):
     return depth
 
 
-def reach(imports, depth, chunk=16384):
-    """For each module, the number of modules that import it directly or indirectly (exact).
-
-    Bit sets over a chunk of the modules at a time: the set of a module is itself and the sets of
-    the modules importing it, which are deeper, so the depths are processed from the deepest. The
-    chunks are taken in order of depth: the bits of a chunk only reach modules less deep than its
-    deepest module, so the deeper levels are skipped."""
+def simulate(imports, depth, cost):
+    """Start and end of each module in the ideal build: it starts when the last module it imports
+    ends. The modules are taken by depth, so all that a module imports has ended before."""
     n = len(imports)
+    depth = np.array(depth)
+    cost = np.array(cost, dtype=float)
     src = np.array([i for i, js in enumerate(imports) for _ in js], dtype=np.int64)
     dst = np.array([j for js in imports for j in js], dtype=np.int64)
-    depth = np.array(depth)
-    # the edges into each depth, sorted by the imported module
-    by_level = {}
-    order = np.lexsort((dst, depth[dst]))
+    order = np.lexsort((src, depth[src]))  # the edges by the depth of the importing module
     src, dst = src[order], dst[order]
-    bounds = np.searchsorted(depth[dst], np.arange(depth.max() + 2))
-    for d in range(depth.max() + 1):
-        a, b = bounds[d], bounds[d + 1]
-        if a < b:
-            s, t = src[a:b], dst[a:b]
-            starts = np.flatnonzero(np.r_[True, t[1:] != t[:-1]])
-            by_level[d] = (s, t[starts], starts)
-    count = np.zeros(n, dtype=np.int64)
+    edge_bounds = np.searchsorted(depth[src], np.arange(depth.max() + 2))
     by_depth = np.argsort(depth, kind="stable")
-    for c0 in range(0, n, chunk):
-        members = by_depth[c0 : c0 + chunk]
-        k = len(members)
-        words = (k + 63) // 64
-        bits = np.zeros((n, words), dtype=np.uint64)
-        own = np.arange(k)
-        bits[members, own // 64] = np.left_shift(np.uint64(1), (own % 64).astype(np.uint64))
-        top = depth[members].max()
-        for d in sorted((d for d in by_level if d < top), reverse=True):
-            s, targets, starts = by_level[d]
-            bits[targets] |= np.bitwise_or.reduceat(bits[s], starts, axis=0)
-        count += np.bitwise_count(bits).sum(axis=1, dtype=np.int64)
-    return count - 1  # not the module itself
+    node_bounds = np.searchsorted(depth[by_depth], np.arange(depth.max() + 2))
+    start, end = np.zeros(n), np.zeros(n)
+    for d in range(depth.max() + 1):
+        a, b = edge_bounds[d], edge_bounds[d + 1]
+        if a < b:
+            s = src[a:b]
+            firsts = np.flatnonzero(np.r_[True, s[1:] != s[:-1]])
+            start[s[firsts]] = np.maximum.reduceat(end[dst[a:b]], firsts)
+        nodes = by_depth[node_bounds[d] : node_bounds[d + 1]]
+        end[nodes] = start[nodes] + cost[nodes]
+    return start, end
 
 
-def summary(names, imports):
+def summary(names, imports, cost):
     t = time.time()
     depth = depths(imports)
-    t_depth = time.time() - t
-    t = time.time()
-    r = reach(imports, depth)
-    t_reach = time.time() - t
+    start, end = simulate(imports, depth, cost)
+    t_build = time.time() - t
     n = len(names)
-    profile = np.bincount(depth).tolist()
-    rank = np.argsort(-r, kind="stable")
-    picks = np.unique(np.linspace(0, n - 1, min(SAMPLES, n)).round().astype(int))
+    work, span = float(sum(cost)), float(end.max())
+    moments = (np.arange(SAMPLES) + 0.5) / SAMPLES * span
+    running = (np.searchsorted(np.sort(start), moments, "right")
+               - np.searchsorted(np.sort(end), moments, "right"))
+    # the longest import chain, from its last module back: each one's latest-ending import
+    chain = [int(np.argmax(end))]
+    while imports[chain[-1]]:
+        chain.append(max(imports[chain[-1]], key=lambda j: end[j]))
+    chain.reverse()
+    chain_end = end[chain]
+    at = np.minimum(np.searchsorted(chain_end, moments, "right"), len(chain) - 1)
+    # the folders, LEVELS deep: code lines, modules, middle of their build (weighted by code
+    # lines), first start and last end, as shares of the span
+    agg = {}
+    for i, name in enumerate(names):
+        parts = name.split(".")[:-1]
+        for k in range(1, min(LEVELS, len(parts)) + 1):
+            a = agg.setdefault("/".join(parts[:k]), [0, 0, 0.0, span, 0.0])
+            a[0] += cost[i]
+            a[1] += 1
+            a[2] += cost[i] * (start[i] + end[i]) / 2
+            a[3] = min(a[3], start[i])
+            a[4] = max(a[4], end[i])
+    tree = [[path, a[0], a[1], round(a[2] / a[0] / span if a[0] else a[3] / span, 4),
+             round(a[3] / span, 4), round(a[4] / span, 4)]
+            for path, a in sorted(agg.items()) if a[0] >= SMALLEST * work]
     src = np.array([i for i, js in enumerate(imports) for _ in js], dtype=np.int64)
     dst = np.array([j for js in imports for j in js], dtype=np.int64)
     cell = (src * BINS // n) * BINS + dst * BINS // n
@@ -155,19 +170,14 @@ def summary(names, imports):
             folders.append({"name": top, "start": i})
     for f, g in zip(folders, folders[1:] + [{"start": n}]):
         f["end"] = g["start"]
-    print(f"{n} modules, {len(src)} imports, depth {len(profile)}; "
-          f"depths {t_depth:.1f}s, reach {t_reach:.1f}s", file=sys.stderr)
+    print(f"{n} modules, {len(src)} imports; work {work:.0f}, span {span:.0f} code lines "
+          f"({work / span:.0f}x); build {t_build:.1f}s; {len(tree)} folders", file=sys.stderr)
     return {
         "modules": n,
         "imports": int(len(src)),
-        "profile": profile,
-        "reach": {
-            "mean": float(r.mean()),
-            "unused": int((r == 0).sum()),  # imported by no module
-            "rank": picks.tolist(),
-            "count": r[rank[picks]].tolist(),
-            "name": [names[i] for i in rank[picks]],
-        },
+        "build": {"work": work, "span": span, "running": running.tolist(),
+                  "chain": [names[i] for i in chain], "at": at.tolist()},
+        "tree": tree,
         "matrix": {"bins": BINS, "labels": labels,
                    "cells": [[int(c // BINS), int(c % BINS), int(cells[c])] for c in nz]},
         "folders": folders,
@@ -186,8 +196,8 @@ def main():
     shas = git(args.repo, "log", "--first-parent", "--reverse", "--format=%H", args.ref).decode().split()
     result = {"version": VERSION}
     for key, sha in (("now", shas[-1]),) if args.only else (("original", shas[0]), ("now", shas[-1])):
-        names, imports = modules(args.repo, sha, args.prefix, args.package)
-        result[key] = {"sha": sha, **summary(names, imports)}
+        names, imports, cost = modules(args.repo, sha, args.prefix, args.package)
+        result[key] = {"sha": sha, **summary(names, imports, cost)}
     with open(args.out, "w") as f:
         json.dump(result, f, separators=(",", ":"))
         f.write("\n")
