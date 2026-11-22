@@ -164,8 +164,8 @@ footer {
     regular expressions (like <code>grep</code>), over the <code>.lean</code> files as stored in git
     (<a href="https://github.com/rh-shrink/rh-shrink.github.io/blob/main/collect.py">collect.py</a>).
     Lean is never run and nothing is elaborated.</p>
-    <p>Every commit on <code>main</code> (first parent: one point per merged pull request). A GitHub
-    Action checks for new commits every 15 minutes.</p>
+    <p>There is one data point per commit on <code>main</code>; a merged pull request counts as one
+    commit, not as the commits it contains. A GitHub Action checks for new commits every 15 minutes.</p>
     <dl>
       <dt>Code lines</dt><dd>lines of the <code>.lean</code> files under <code>src/</code>, without blank lines and lines that are only comments (<code>--</code>, nested <code>/- -/</code>)</dd>
       <dt>Declarations</dt><dd>lines starting with <code>theorem</code>, <code>lemma</code>, <code>def</code>, <code>abbrev</code>, <code>instance</code>, <code>structure</code>, <code>inductive</code>, <code>class</code>, <code>opaque</code> or <code>axiom</code>, also after attributes and modifiers such as <code>@[simp] private</code></dd>
