@@ -71,6 +71,7 @@ h2 { font-size: 14px; font-weight: 600; margin: 0 0 10px; color: var(--text-seco
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .legend i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
 .chart { position: relative; height: 320px; }
+.chart canvas { -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; }
 .chart.small { height: 200px; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0; }
 details { margin-top: 12px; }
@@ -224,12 +225,13 @@ function showTip({ chart, tooltip }) {
     `<div class="open">Click to select</div>`;
   tip.href = commitUrl(commitAt(chart, tooltip.dataPoints[0].dataIndex));
   tip.hidden = false;
+  // Above the chart, centred on the commit, so the lines stay visible; below the chart only
+  // when there is no room above it on screen.
   const r = chart.canvas.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
   const right = scrollX + document.documentElement.clientWidth - 8;
-  let x = r.left + scrollX + tooltip.caretX + 14;
-  if (x + w > right) x = r.left + scrollX + tooltip.caretX - 14 - w;
-  x = Math.max(scrollX + 8, Math.min(x, right - w));
-  const y = Math.max(r.top + scrollY, r.top + scrollY + tooltip.caretY - h / 2);
+  const x = Math.max(scrollX + 8, Math.min(r.left + scrollX + tooltip.caretX - w / 2, right - w));
+  let y = r.top + scrollY - h - 6;
+  if (y < scrollY + 4) y = r.bottom + scrollY + 6;
   tip.style.left = x + "px"; tip.style.top = y + "px";
 }
 
