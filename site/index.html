@@ -190,18 +190,18 @@ const METRICS = [
 const compact = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 2 });
 const full = new Intl.NumberFormat("en");
 const fmtBytes = v => (v >= 1e9 ? (v / 1e9).toFixed(2) + " GB" : (v / 1e6).toFixed(1) + " MB");
-// All times in GMT+1 ("Etc/GMT-1": POSIX zone names have the sign reversed).
-const TZ = "Etc/GMT-1", TZ_OFFSET = 3600e3, DAY = 864e5;
+// All times in UTC.
+const TZ = "UTC", DAY = 864e5;
 const fmtDate = t => new Date(t).toLocaleString("en", {
   timeZone: TZ, month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
-}) + " GMT+1";
+}) + " UTC";
 
-// Ticks on GMT+1 midnights only (dates, no times), at most about 6 per axis (3 on narrow charts).
+// Ticks on UTC midnights only (dates, no times), at most about 6 per axis (3 on narrow charts).
 function timeTicks(scale) {
   const hours = (scale.max - scale.min) / 3.6e6, target = scale.width < 400 ? 3 : 6;
   const step = [24, 48, 72, 168, 336, 720].find(h => hours / h <= target) || 720;
   const ticks = [];
-  for (let t = Math.floor((scale.min + TZ_OFFSET) / DAY) * DAY - TZ_OFFSET; t <= scale.max; t += step * 3.6e6)
+  for (let t = Math.floor(scale.min / DAY) * DAY; t <= scale.max; t += step * 3.6e6)
     if (t >= scale.min) ticks.push({ value: t });
   scale.ticks = ticks;
 }
