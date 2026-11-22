@@ -294,9 +294,26 @@ document.addEventListener("click", e => {
 document.addEventListener("keydown", e => { if (e.key === "Escape") unpin(); });
 tip.addEventListener("click", () => setTimeout(unpin));
 
-// The pinned commit keeps the enlarged dot that hovering gives it.
+// For the hovered or pinned commit: a solid line from the top of the chart (where the popup is)
+// down to the topmost point, dotted between the points of the other lines, nothing below. The
+// pinned commit also keeps the enlarged dot that hovering gives it.
 const overlay = {
   id: "overlay",
+  beforeDatasetsDraw(chart) {
+    if (chart.config.type !== "line") return;
+    const els = pinned?.chart === chart ? pinned.els : chart.tooltip?.getActiveElements?.() || [];
+    if (!els.length) return;
+    const { ctx } = chart, x = els[0].element.x, ys = els.map(e => e.element.y);
+    const top = Math.min(...ys), bottom = Math.max(...ys);
+    ctx.save();
+    ctx.strokeStyle = css("--text-muted"); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, top); ctx.stroke();
+    if (bottom > top) {
+      ctx.setLineDash([2, 3]);
+      ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
+    }
+    ctx.restore();
+  },
   afterDatasetsDraw(chart) {
     if (pinned?.chart !== chart || chart.config.type !== "line") return;
     const { ctx } = chart;
