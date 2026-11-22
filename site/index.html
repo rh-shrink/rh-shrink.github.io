@@ -66,6 +66,7 @@ code { font-size: 0.92em; }
 .tile .value { font-size: 26px; font-weight: 600; margin-top: 2px; }
 .tile .delta { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
 .arrow { color: var(--text-primary); }
+.nowrap { white-space: nowrap; }
 h2 { font-size: 14px; font-weight: 600; margin: 0 0 10px; color: var(--text-secondary); }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: -2px 0 10px; font-size: 13px; color: var(--text-secondary); }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
@@ -114,7 +115,7 @@ tr.unchanged td, tr.unchanged a { color: var(--text-muted); }
 <main>
   <header>
     <h1>RH proof size <span class="badge">unofficial</span></h1>
-    <span class="meta"><a href="https://github.com/leanprover-community/riemann-hypothesis">leanprover-community/riemann-hypothesis</a> · <span id="updated"></span> · <span id="polled">polled every 15 min</span></span>
+    <span class="meta"><a href="https://github.com/leanprover-community/riemann-hypothesis">leanprover-community/riemann-hypothesis</a><span id="updated"></span> · <span id="polled">polled every 15 min</span></span>
   </header>
 
   <div class="top">
@@ -430,13 +431,13 @@ function render() {
   const xs = commits.map(c => Date.parse(c.date));
 
   document.getElementById("hero").textContent = (100 * last.lines / first.lines).toFixed(1) + "%";
-  document.getElementById("updated").textContent = "last commit " + fmtDate(last.date);
+  document.getElementById("updated").textContent = " · last commit " + fmtDate(last.date);
 
   // Tiles: the current value, and the change from the original.
   const tile = (label, color, key, fmt = compact.format, unit = "") => {
     const now = last[key], orig = first[key], d = now - orig;
-    const change = d === 0 ? "= original"
-      : `<span class="arrow">${d < 0 ? "↓" : "↑"}</span> ${Math.abs(100 * d / orig).toFixed(1)}% from original ${fmt(orig)}`;
+    const change = d === 0 ? "unchanged"
+      : `<span class="arrow">${d < 0 ? "↓" : "↑"}</span> ${Math.abs(100 * d / orig).toFixed(1)}%, <span class="nowrap">originally ${fmt(orig)}</span>`;
     return `<div class="card tile"><div class="label">${color ? `<i class="swatch" style="background:${css(color)}"></i>` : ""}${label}</div>
       <div class="value" title="${full.format(now)}${unit}">${fmt(now)}</div>
       <div class="delta" title="${signed(d, v => full.format(v))}${unit}">${change}</div></div>`;
