@@ -462,10 +462,12 @@ function render() {
   document.getElementById("legend").innerHTML = METRICS.map(m =>
     `<span><i style="background:${css(m.color)}"></i>${m.label}</span>`).join("");
   const idxOpts = baseOptions(v => v + "%");
+  // A fixed 0–100% axis, so that progress shows as the lines sinking; an axis that followed the
+  // data would rescale with every drop and always look the same. Above 100% only if the data
+  // ever grows past a hair (the +42 lines of Challenge.lean are not worth a 110% tick).
   const pcts = METRICS.flatMap(m => commits.map(c => 100 * c[m.key] / first[m.key]));
-  idxOpts.scales.y.min = Math.floor(Math.min(...pcts) / 10) * 10;
-  // A hair above 100% (the +42 lines of Challenge.lean) is not worth a 110% tick.
-  idxOpts.scales.y.max = Math.ceil(Math.max(...pcts) / 10 - 0.01) * 10;
+  idxOpts.scales.y.min = 0;
+  idxOpts.scales.y.max = Math.max(100, Math.ceil(Math.max(...pcts) / 10 - 0.01) * 10);
   idxOpts.endLabels_ = innerWidth >= 600;
   if (idxOpts.endLabels_) idxOpts.layout = { padding: { right: 130 } };
   idxOpts.plugins.tooltip.callbacks = {
