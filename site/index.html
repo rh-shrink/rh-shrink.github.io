@@ -5,6 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RH proof size (unofficial)</title>
 <meta name="description" content="Size of the Lean proof of the Riemann Hypothesis, per commit.">
+<meta property="og:title" content="RH proof size (unofficial)">
+<meta property="og:description" content="Size of the Lean proof of the Riemann Hypothesis, per commit.">
+<meta property="og:url" content="https://rh-shrink.github.io/">
+<meta property="og:image" content="https://rh-shrink.github.io/card.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='3' width='7' height='26' rx='2' fill='%232a78d6'/%3E%3Crect x='12.5' y='10' width='7' height='19' rx='2' fill='%232a78d6'/%3E%3Crect x='22' y='17' width='7' height='12' rx='2' fill='%232a78d6'/%3E%3C/svg%3E">
 <style>
 :root {
   color-scheme: light;
@@ -19,6 +27,7 @@
   --m-decls: #eb6834;
   --m-files: #1baf7a;
   --m-imports: #eda100;
+  --m-lines-tint: #cfe0f6;
   --m-extra: #8f8e88;
   --down: #2a78d6;
   --up: #e34948;
@@ -37,6 +46,7 @@
     --m-decls: #d95926;
     --m-files: #199e70;
     --m-imports: #c98500;
+    --m-lines-tint: #1f3550;
     --m-extra: #7d7c76;
     --down: #3987e5;
     --up: #e66767;
@@ -96,6 +106,17 @@ th { color: var(--text-secondary); font-weight: 500; white-space: normal; vertic
 th:nth-child(-n+2), td:nth-child(-n+2) { text-align: left; }
 td.subject { max-width: 380px; overflow: hidden; text-overflow: ellipsis; }
 tr.unchanged td, tr.unchanged a { color: var(--text-muted); }
+/* The commit column stays while the table scrolls sideways (narrow screens). */
+th:first-child, td:first-child { position: sticky; left: 0; background: var(--surface-1); }
+.folders { display: grid; grid-template-columns: max-content 1fr max-content; gap: 8px 14px; align-items: center; font-size: 13px; }
+.folders .name { color: var(--text-primary); }
+.folders .bar { position: relative; height: 12px; }
+.folders .bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 0 4px 4px 0; }
+.folders .bar .orig { background: var(--m-lines-tint); }
+.folders .bar .now { background: var(--m-lines); }
+.folders .num { text-align: right; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.legend i.tint { background: var(--m-lines-tint) !important; height: 10px; border-radius: 3px; }
+.legend i.solid { height: 10px; border-radius: 3px; }
 .method { font-size: 14px; color: var(--text-secondary); }
 .method dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0 0 10px; }
 .method dt { color: var(--text-primary); font-weight: 500; }
@@ -124,6 +145,8 @@ footer {
   .hero .value { font-size: 48px; }
   .method dl { grid-template-columns: 1fr; gap: 2px; }
   .method dd { margin-bottom: 8px; }
+  .folders { grid-template-columns: 1fr max-content; grid-auto-flow: row dense; gap: 4px 12px; }
+  .folders .bar { grid-column: 1 / -1; margin-bottom: 6px; }
 }
 </style>
 </head>
@@ -150,6 +173,12 @@ footer {
 
   <div class="grid2" id="multiples"></div>
 
+  <section class="card" id="folders-card" hidden>
+    <h2>Code lines by folder</h2>
+    <div class="legend"><span><i class="solid" style="background:var(--m-lines)"></i>Now</span><span><i class="tint"></i>Originally</span></div>
+    <div class="folders" id="folders"></div>
+  </section>
+
   <section class="card">
     <h2>Code lines added or removed by each commit that changes them</h2>
     <div class="chart small"><canvas id="chart-delta"></canvas></div>
@@ -171,14 +200,14 @@ footer {
     <dl>
       <dt>Total lines</dt><dd>lines of the <code>.lean</code> files under <code>src/</code>, including blank lines and comments</dd>
       <dt>Code lines</dt><dd>total lines, without blank lines and lines that are only comments (<code>--</code>, nested <code>/- -/</code>)</dd>
-      <dt>Theorems</dt><dd>lines starting with <code>theorem</code> or <code>lemma</code>, also after attributes and modifiers such as <code>@[simp] private</code></dd>
-      <dt>Other declarations</dt><dd>lines starting with <code>def</code>, <code>abbrev</code>, <code>instance</code>, <code>structure</code>, <code>inductive</code>, <code>class</code>, <code>opaque</code> or <code>axiom</code>, likewise</dd>
+      <dt>Theorems</dt><dd>code lines starting with <code>theorem</code> or <code>lemma</code>, also after attributes and modifiers such as <code>@[simp] private</code></dd>
+      <dt>Other declarations</dt><dd>code lines starting with <code>def</code>, <code>abbrev</code>, <code>instance</code>, <code>structure</code>, <code>inductive</code>, <code>class</code>, <code>opaque</code> or <code>axiom</code>, likewise</dd>
       <dt>Declarations</dt><dd>theorems and other declarations</dd>
       <dt>Files</dt><dd><code>.lean</code> files under <code>src/</code></dd>
-      <dt>Import statements</dt><dd><code>import</code> statements (also <code>public import</code>, <code>meta import</code>), counted as lines starting with one, assuming the usual one import per line</dd>
+      <dt>Folders</dt><dd>the folders directly in <code>src/</code>, each with everything below it; the files directly in <code>src/</code> are one more group</dd>
+      <dt>Import statements</dt><dd><code>import</code> statements (also <code>public import</code>, <code>meta import</code>), counted as code lines starting with one, assuming the usual one import per line</dd>
     </dl>
-    <p>Because this is text search, declarations generated by commands or macros are missed, and a
-    line inside a comment that starts like a declaration or an import is wrongly counted as one.</p>
+    <p>Because this is text search, declarations generated by commands or macros are missed.</p>
   </details>
 
   <footer>No guarantee that this page keeps working or stays up to date.</footer>
@@ -539,6 +568,25 @@ function render() {
     }));
   });
 
+  // Code lines by folder: now and originally, largest originally first.
+  const card = document.getElementById("folders-card");
+  card.hidden = !(first.dirs && last.dirs);
+  if (!card.hidden) {
+    const names = [...new Set([...Object.keys(first.dirs), ...Object.keys(last.dirs)])];
+    const was = n => first.dirs[n] || 0, now = n => last.dirs[n] || 0;
+    names.sort((a, b) => was(b) - was(a) || now(b) - now(a));
+    const top = Math.max(...names.map(n => Math.max(was(n), now(n))));
+    const pct = v => (100 * v / top).toFixed(2) + "%";
+    document.getElementById("folders").innerHTML = names.map(n => {
+      const d = now(n) - was(n);
+      const change = !was(n) ? "new" : !now(n) ? "removed" : d === 0 ? "unchanged"
+        : `<span class="arrow">${d < 0 ? "↓" : "↑"}</span> ${Math.abs(100 * d / was(n)).toFixed(1)}%`;
+      return `<span class="name">${n ? escapeHtml(n) : "files directly in src/"}</span>
+        <span class="bar" title="now ${full.format(now(n))}, originally ${full.format(was(n))}"><i class="orig" style="width:${pct(was(n))}"></i><i class="now" style="width:${pct(now(n))}"></i></span>
+        <span class="num">${compact.format(now(n))} · ${change}</span>`;
+    }).join("");
+  }
+
   // Per-commit change in code lines, for the commits that change them. Horizontal on narrow screens.
   const deltas = commits.slice(1).map((c, i) => ({ c, d: c.code - commits[i].code })).filter(x => x.d);
   const horizontal = innerWidth < 600;
@@ -589,11 +637,11 @@ function render() {
     return `<tr${unchanged ? ' class="unchanged" title="No change in src/"' : ""}><td><a href="${commitUrl(c)}">${commitLabel(c)}</a></td>
       <td class="subject" title="${escapeHtml(c.subject)}">${escapeHtml(c.subject)}</td>
       <td>${fmtDate(c.date)}</td><td>${full.format(c.code)}</td>
-      <td>${prev ? signed(c.code - prev.code, v => full.format(v)) : ""}</td>
-      <td>${full.format(c.decls)}</td><td>${full.format(c.files)}</td><td>${full.format(c.imports)}</td></tr>`;
+      <td>${prev ? signed(c.code - prev.code, v => full.format(v)) : ""}</td><td>${full.format(c.lines)}</td>
+      <td>${full.format(c.decls)}</td><td>${full.format(c.theorems)}</td><td>${full.format(c.files)}</td><td>${full.format(c.imports)}</td></tr>`;
   }).join("");
   document.getElementById("table").innerHTML =
-    `<thead><tr><th>Commit</th><th>Title</th><th>Date</th><th>Code lines</th><th>Δ code lines</th><th>Declarations</th><th>Files</th><th>Import statements</th></tr></thead><tbody>${rows}</tbody>`;
+    `<thead><tr><th>Commit</th><th>Title</th><th>Date</th><th>Code lines</th><th>Δ code lines</th><th>Total lines</th><th>Declarations</th><th>Theorems</th><th>Files</th><th>Import statements</th></tr></thead><tbody>${rows}</tbody>`;
 }
 
 // Draws the page for these commits; does nothing when they are the ones already shown, so that a

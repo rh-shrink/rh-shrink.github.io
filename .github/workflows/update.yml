@@ -31,7 +31,7 @@ env:
 jobs:
   measure:
     runs-on: ubuntu-latest
-    timeout-minutes: 15  # a hanging run must not hold up the queued ones
+    timeout-minutes: 30  # a hanging run must not hold up the queued ones; measuring all commits takes ~5 min
     permissions:
       contents: write
     outputs:
@@ -46,7 +46,8 @@ jobs:
         run: |
           eval "$RETRY"
           head=$(retry git ls-remote "$SOURCE" refs/heads/main | cut -f1)
-          last=$(python3 -c 'import json; c = json.load(open("site/data.json"))["commits"]; print(c[-1]["sha"] if c else "")')
+          # Data of another version is measured again (collect.py VERSION).
+          last=$(python3 -c 'import json, collect; d = json.load(open("site/data.json")); c = d["commits"]; print(c[-1]["sha"] if c and d.get("version") == collect.VERSION else "")')
           echo "source main: $head, last measured: $last"
           # The page shows "polled" as "last at" (any run), and warns when "scheduled" (the last run
           # started by the schedule, carried over from the live file otherwise) is over 30 min old.
@@ -85,6 +86,15 @@ jobs:
             retry git push --quiet
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
+
+      # The link preview (Open Graph image); not committed. A failure here must not stop the deploy.
+      - name: Draw link preview
+        continue-on-error: true
+        run: |
+          eval "$RETRY"
+          python3 -m venv "$RUNNER_TEMP/venv"
+          retry "$RUNNER_TEMP/venv/bin/pip" install --quiet pillow
+          "$RUNNER_TEMP/venv/bin/python" card.py site/data.json site/card.png
 
       # Every run deploys, so that polled.json is current. Uploaded here, not in the deploy job:
       # deploy-pages may not yet see an artifact uploaded moments before in the same job

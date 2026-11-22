@@ -4,8 +4,9 @@
 Usage: collect.py REPO DATA [--ref main] [--prefix src/]
 
 REPO is a (bare) clone; DATA is the JSON file the site reads. Commits already in
-DATA are skipped. Statistics are computed once per blob, so consecutive commits
-cost only the files they changed.
+DATA are skipped (all are measured again when DATA has another VERSION).
+Statistics are computed once per blob, so consecutive commits cost only the
+files they changed.
 """
 import argparse
 import json
@@ -15,6 +16,8 @@ import subprocess
 import sys
 import threading
 
+# 2: declarations and imports inside comments are not counted; code lines per folder.
+VERSION = 2
 STAT_KEYS = ("bytes", "lines", "code", "theorems", "defs", "imports")
 
 DECL = re.compile(
@@ -24,53 +27,58 @@ DECL = re.compile(
     re.M,
 )
 IMPORT = re.compile(rb"^(?:public[ \t]+)?(?:meta[ \t]+)?import[ \t]", re.M)
-CODE_TOKEN = re.compile(rb'/-|--|"|\n')
-COMMENT_TOKEN = re.compile(rb"/-|-/|\n")
+CODE_TOKEN = re.compile(rb'/-|--|"')
+COMMENT_TOKEN = re.compile(rb"/-|-/")
 STRING_END = re.compile(rb'(?:[^"\\]|\\.)*"', re.S)
-NON_SPACE = re.compile(rb"\S")
+NOT_NEWLINE = re.compile(rb"[^\n]")
+CODE_LINE = re.compile(rb"^[ \t\r\f\v]*\S", re.M)
 
 
-def code_lines(text: bytes) -> int:
-    """Lines with something outside comments (nested /- -/ and --) and blanks."""
-    count, pos, depth, has_code, n = 0, 0, 0, False, len(text)
+def without_comments(text: bytes) -> bytes:
+    """The text with every comment (--, nested /- -/) blanked out, newlines kept."""
+    spans, pos, depth, start, n = [], 0, 0, 0, len(text)
     while pos < n:
         m = (COMMENT_TOKEN if depth else CODE_TOKEN).search(text, pos)
-        end = m.start() if m else n
-        if not depth and not has_code and NON_SPACE.search(text, pos, end):
-            has_code = True
         if not m:
+            if depth:
+                spans.append((start, n))  # unclosed comment
             break
         tok, pos = m.group(), m.end()
-        if tok == b"\n":
-            count += has_code
-            has_code = False
-        elif tok == b"/-":
+        if tok == b"/-":
+            if not depth:
+                start = m.start()
             depth += 1
         elif tok == b"-/":
             depth -= 1
+            if not depth:
+                spans.append((start, pos))
         elif tok == b"--":
             nl = text.find(b"\n", pos)
             pos = n if nl < 0 else nl
-        elif tok == b'"':
-            has_code = True
+            spans.append((m.start(), pos))
+        else:  # a string: skip it, comment markers in it are text
             if text[m.start() - 1 : m.start()] == b"'" and text[pos : pos + 1] == b"'":
                 continue  # the character literal '"'
             s = STRING_END.match(text, pos)
             pos = s.end() if s else n
-    return count + has_code
+    out = bytearray(text)
+    for a, b in spans:
+        out[a:b] = NOT_NEWLINE.sub(b" ", text[a:b])
+    return bytes(out)
 
 
 def blob_stats(text: bytes) -> list:
     lines = text.count(b"\n") + (1 if text and not text.endswith(b"\n") else 0)
-    kinds = [m.group(1) for m in DECL.finditer(text)]
+    code = without_comments(text)
+    kinds = [m.group(1) for m in DECL.finditer(code)]
     theorems = sum(k in (b"theorem", b"lemma") for k in kinds)
     return [
         len(text),
         lines,
-        code_lines(text),
+        len(CODE_LINE.findall(code)),
         theorems,
         len(kinds) - theorems,
-        len(IMPORT.findall(text)),
+        len(IMPORT.findall(code)),
     ]
 
 
@@ -81,6 +89,8 @@ def git(repo, *args, **kw):
 
 
 def lean_blobs(repo, sha, prefix):
+    """(folder, blob id) of each .lean file under prefix; the folder is the first one below
+    prefix, "" for files directly in it."""
     out = git(repo, "ls-tree", "-r", "-z", "--full-tree", sha, "--", prefix)
     blobs = []
     for entry in out.split(b"\0"):
@@ -89,7 +99,8 @@ def lean_blobs(repo, sha, prefix):
         meta, path = entry.split(b"\t", 1)
         _, kind, blob = meta.split()
         if kind == b"blob" and path.endswith(b".lean"):
-            blobs.append(blob.decode())
+            rest = path.decode()[len(prefix):]
+            blobs.append((rest.split("/")[0] if "/" in rest else "", blob.decode()))
     return blobs
 
 
@@ -126,6 +137,8 @@ def main():
     if os.path.exists(args.data):
         with open(args.data) as f:
             data = json.load(f)
+    if data.get("version") != VERSION:
+        data = {"version": VERSION, "commits": []}
     known = {c["sha"] for c in data["commits"]}
 
     cache = {}
@@ -137,15 +150,21 @@ def main():
     print(f"{len(new)} new commit(s)", file=sys.stderr)
 
     for sha, date, subject in new:
-        blobs = lean_blobs(args.repo, sha, args.prefix)
+        files = lean_blobs(args.repo, sha, args.prefix)
+        blobs = [b for _, b in files]
         missing = sorted(set(blobs) - cache.keys())
         for blob, text in read_blobs(args.repo, missing):
             cache[blob] = blob_stats(text)
         totals = [sum(cache[b][i] for b in blobs) for i in range(len(STAT_KEYS))]
+        code = STAT_KEYS.index("code")
+        dirs = {}
+        for folder, b in files:
+            dirs[folder] = dirs.get(folder, 0) + cache[b][code]
         pr = re.match(r"Merge pull request #(\d+)", subject)
         entry = {"sha": sha, "date": date, "subject": subject,
                  "pr": int(pr.group(1)) if pr else None, "files": len(blobs)}
         entry.update(zip(STAT_KEYS, totals))
+        entry["dirs"] = dict(sorted(dirs.items()))
         data["commits"].append(entry)
         print(f"{sha[:8]} {entry['lines']:>10} lines {len(missing):>6} new blobs",
               file=sys.stderr)
