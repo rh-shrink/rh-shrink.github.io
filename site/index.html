@@ -124,7 +124,8 @@ th:first-child, td:first-child { position: sticky; left: 0; background: var(--su
 .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; }
 .pair.three { grid-template-columns: 1fr 1fr 1fr; }
 .pair figure { margin: 0; min-width: 0; }
-.pair figcaption { font-size: 13px; color: var(--text-primary); font-weight: 500; margin-bottom: 4px; }
+/* panel titles centred over their panel, so they do not read as a title of the y axis */
+.pair figcaption { font-size: 13px; color: var(--text-primary); font-weight: 600; text-align: center; margin-bottom: 8px; }
 .pair .note { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
 .matrix { display: block; width: 100%; aspect-ratio: 1; -webkit-tap-highlight-color: transparent; }
 .hint { font-size: 12px; color: var(--text-muted); margin: -4px 0 10px; }
