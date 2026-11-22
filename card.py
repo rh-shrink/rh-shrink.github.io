@@ -45,11 +45,11 @@ def main():
     bw = d.textlength("unofficial", font=small) / SCALE + 24
     d.rounded_rectangle(s(badge_x, 76, badge_x + bw, 108), radius=16 * SCALE, outline=BORDER, width=2 * SCALE)
     d.text(s(badge_x + 12, 80), "unofficial", font=small, fill=SECONDARY)
-    d.text(s(72, 132), "leanprover-community/riemann-hypothesis", font=font("regular", 24), fill=MUTED)
+    d.text(s(72, 132), "leanprover-community/riemann-hypothesis", font=font("regular", 22), fill=MUTED)
     d.text(s(68, 218), f"{100 * last['code'] / first['code']:.1f}%", font=font("bold", 132), fill=TEXT)
     d.text(s(72, 384), "of the original code lines left", font=font("regular", 30), fill=SECONDARY)
     when = datetime.fromisoformat(last["date"]).astimezone(timezone.utc).strftime("%b %-d, %H:%M UTC")
-    d.text(s(72, 548), f"rh-shrink.github.io · last commit {when}", font=font("regular", 22), fill=MUTED)
+    d.text(s(72, 548), f"rh-shrink.github.io · last commit {when}", font=font("regular", 20), fill=MUTED)
 
     # Code lines relative to the original, right: a fixed 0-100% axis as on the page
     x0, x1, y0, y1 = 700, 1128, 120, 540  # plot area; y0 is 100%, y1 is 0%
