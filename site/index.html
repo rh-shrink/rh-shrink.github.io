@@ -123,7 +123,8 @@ th:first-child, td:first-child { position: sticky; left: 0; background: var(--su
 .pair .note { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
 .matrix { display: block; width: 100%; aspect-ratio: 1; -webkit-tap-highlight-color: transparent; }
 .hint { font-size: 12px; color: var(--text-muted); margin: -4px 0 10px; }
-.scale { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); margin: -2px 0 14px; }
+.scale { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 12px; color: var(--text-muted); margin: -2px 0 14px; }
+.scale span { white-space: nowrap; }
 .scale i { width: 160px; height: 10px; border-radius: 2px; flex: none; }
 .legend i.tint { background: var(--m-lines-tint) !important; height: 10px; border-radius: 3px; }
 .legend i.solid { height: 10px; border-radius: 3px; }
@@ -789,7 +790,7 @@ function renderGraph() {
   const per = d => `1 import per ${compact.format(Math.round(1 / d))} pairs`;
   const mix = a => `color-mix(in srgb, ${blue} ${Math.round(100 * a)}%, ${css("--surface-0")})`;
   document.querySelector("#g-matrix .scale").innerHTML =
-    `<span>${per(Math.exp(range[0]))}</span><i style="background:linear-gradient(90deg, ${mix(0.15)}, ${mix(1)})"></i><span>${per(Math.exp(range[1]))}</span>`;
+    `<span>sparsest: ${per(Math.exp(range[0]))}</span><i style="background:linear-gradient(90deg, ${mix(0.15)}, ${mix(1)})"></i><span>densest: ${per(Math.exp(range[1]))}</span>`;
   const box = document.getElementById("g-matrix");
   box.hidden = false;
   const matrices = box.querySelector(".pair");
