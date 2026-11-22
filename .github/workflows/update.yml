@@ -5,6 +5,9 @@ on:
     # Every 15 minutes, off the busy full and quarter hours: GitHub delays or drops
     # scheduled runs under load, most at those times.
     - cron: "7,22,37,52 * * * *"
+    # Daily as well: GitHub drops infrequent schedules less often, so this one may keep working
+    # if the scheduler starts serving this repository.
+    - cron: "41 4 * * *"
   # GitHub's scheduler did not start any scheduled run in this repository (2026-11-22), so an
   # external cron service (cron-job.org) starts the workflow every 15 minutes with source
   # external-cron; such runs count as scheduled polls.
