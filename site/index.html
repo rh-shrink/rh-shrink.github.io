@@ -135,7 +135,7 @@ footer {
   <div class="top">
     <section class="card hero">
       <span class="value" id="hero"></span>
-      <span class="label">of the original lines left</span>
+      <span class="label">of the original code lines left</span>
     </section>
     <section class="tiles" id="tiles"></section>
   </div>
@@ -149,7 +149,7 @@ footer {
   <div class="grid2" id="multiples"></div>
 
   <section class="card">
-    <h2>Lines added or removed by each commit that changes <code>src/</code></h2>
+    <h2>Code lines added or removed by each commit that changes them</h2>
     <div class="chart small"><canvas id="chart-delta"></canvas></div>
   </section>
 
@@ -168,8 +168,7 @@ footer {
     Action checks for new commits every 15 minutes.</p>
     <dl>
       <dt>Files</dt><dd><code>.lean</code> files under <code>src/</code></dd>
-      <dt>Lines</dt><dd>all lines of these files</dd>
-      <dt>Code lines</dt><dd>lines without blank lines and comments (<code>--</code>, nested <code>/- -/</code>)</dd>
+      <dt>Code lines</dt><dd>lines of these files, without blank lines and lines that are only comments (<code>--</code>, nested <code>/- -/</code>)</dd>
       <dt>Theorems</dt><dd>lines starting with <code>theorem</code> or <code>lemma</code>, also after attributes and modifiers such as <code>@[simp] private</code></dd>
       <dt>Definitions</dt><dd>lines starting with <code>def</code>, <code>abbrev</code>, <code>instance</code>, <code>structure</code>, <code>inductive</code>, <code>class</code>, <code>opaque</code> or <code>axiom</code>, likewise</dd>
       <dt>Import statements</dt><dd><code>import</code> statements (also <code>public import</code>, <code>meta import</code>), counted as lines starting with one, assuming the usual one import per line</dd>
@@ -187,7 +186,7 @@ footer {
 <script>
 const REPO = "https://github.com/leanprover-community/riemann-hypothesis";
 const METRICS = [
-  { key: "lines",   label: "Lines",        color: "--m-lines",   sub: c => `${full.format(c.code)} code lines` },
+  { key: "code",    label: "Code lines",   color: "--m-lines",   sub: c => `${Math.round(c.code / c.files)} per file` },
   { key: "decls",   label: "Declarations", color: "--m-decls",   sub: c => `${full.format(c.theorems)} theorems · ${full.format(c.defs)} definitions` },
   { key: "files",   label: "Files",        color: "--m-files",   sub: c => fmtBytes(c.bytes) },
   { key: "imports", label: "Import statements", color: "--m-imports", sub: c => `${(c.imports / c.files).toFixed(1)} per file` },
@@ -456,7 +455,7 @@ function render() {
   const first = commits[0], last = commits[commits.length - 1];
   const xs = commits.map(c => Date.parse(c.date));
 
-  document.getElementById("hero").textContent = (100 * last.lines / first.lines).toFixed(1) + "%";
+  document.getElementById("hero").textContent = (100 * last.code / first.code).toFixed(1) + "%";
   document.getElementById("updated").innerHTML = ` · last commit <time datetime="${last.date}">${fmtDate(last.date)}</time>`;
 
   // Tiles: the current value, and the change from the original.
@@ -471,7 +470,7 @@ function render() {
   document.getElementById("tiles").innerHTML =
     METRICS.map(m => tile(m.label, m.color, m.key)).join("") +
     tile("Size", null, "bytes", fmtBytes, " bytes") +
-    tile("Code lines", null, "code");
+    tile("Theorems", null, "theorems");
 
   // Indexed chart
   document.getElementById("legend").innerHTML = METRICS.map(m =>
@@ -479,7 +478,7 @@ function render() {
   const idxOpts = baseOptions(v => v + "%");
   // A fixed 0–100% axis, so that progress shows as the lines sinking; an axis that followed the
   // data would rescale with every drop and always look the same. Above 100% only if the data
-  // ever grows past a hair (the +42 lines of Challenge.lean are not worth a 110% tick).
+  // ever grows past a hair (the lines Challenge.lean added are not worth a 110% tick).
   const pcts = METRICS.flatMap(m => commits.map(c => 100 * c[m.key] / first[m.key]));
   idxOpts.scales.y.min = 0;
   idxOpts.scales.y.max = Math.max(100, Math.ceil(Math.max(...pcts) / 10 - 0.01) * 10);
@@ -521,8 +520,8 @@ function render() {
     }));
   });
 
-  // Per-commit change in lines, for the commits that change src/. Horizontal on narrow screens.
-  const deltas = commits.slice(1).map((c, i) => ({ c, d: c.lines - commits[i].lines })).filter(x => x.d);
+  // Per-commit change in code lines, for the commits that change them. Horizontal on narrow screens.
+  const deltas = commits.slice(1).map((c, i) => ({ c, d: c.code - commits[i].code })).filter(x => x.d);
   const horizontal = innerWidth < 600;
   const [cat, val] = horizontal ? ["y", "x"] : ["x", "y"];
   const dOpts = baseOptions(v => signed(v));
@@ -544,7 +543,7 @@ function render() {
   }
   dOpts.layout = { padding: horizontal ? { right: 36 } : { top: 16 } };
   dOpts.plugins.tooltip.callbacks = {
-    label: item => `${signed(item.raw, v => full.format(v))} lines`,
+    label: item => `${signed(item.raw, v => full.format(v))} code lines`,
     afterBody: items => deltas[items[0].dataIndex].c.subject,
   };
   const deltaBox = document.getElementById("chart-delta").parentElement;
@@ -570,12 +569,12 @@ function render() {
     const unchanged = prev && ["bytes", "files", "lines"].every(k => c[k] === prev[k]);
     return `<tr${unchanged ? ' class="unchanged" title="No change in src/"' : ""}><td><a href="${commitUrl(c)}">${commitLabel(c)}</a></td>
       <td class="subject" title="${escapeHtml(c.subject)}">${escapeHtml(c.subject)}</td>
-      <td>${fmtDate(c.date)}</td><td>${full.format(c.lines)}</td>
-      <td>${prev ? signed(c.lines - prev.lines, v => full.format(v)) : ""}</td>
+      <td>${fmtDate(c.date)}</td><td>${full.format(c.code)}</td>
+      <td>${prev ? signed(c.code - prev.code, v => full.format(v)) : ""}</td>
       <td>${full.format(c.decls)}</td><td>${full.format(c.files)}</td><td>${full.format(c.imports)}</td></tr>`;
   }).join("");
   document.getElementById("table").innerHTML =
-    `<thead><tr><th>Commit</th><th>Title</th><th>Date</th><th>Lines</th><th>Δ lines</th><th>Declarations</th><th>Files</th><th>Import statements</th></tr></thead><tbody>${rows}</tbody>`;
+    `<thead><tr><th>Commit</th><th>Title</th><th>Date</th><th>Code lines</th><th>Δ code lines</th><th>Declarations</th><th>Files</th><th>Import statements</th></tr></thead><tbody>${rows}</tbody>`;
 }
 
 // Draws the page for these commits; does nothing when they are the ones already shown, so that a
