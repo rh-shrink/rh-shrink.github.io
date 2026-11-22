@@ -78,6 +78,7 @@ th, td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--bor
 th { color: var(--text-secondary); font-weight: 500; }
 th:nth-child(-n+2), td:nth-child(-n+2) { text-align: left; }
 td.subject { max-width: 380px; overflow: hidden; text-overflow: ellipsis; }
+tr.unchanged td, tr.unchanged a { color: var(--text-muted); }
 .method { font-size: 14px; color: var(--text-secondary); }
 .method dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0 0 10px; }
 .method dt { color: var(--text-primary); font-weight: 500; }
@@ -378,7 +379,8 @@ function render() {
   // Table
   const rows = commits.slice().reverse().map((c, i, arr) => {
     const prev = arr[i + 1];
-    return `<tr><td><a href="${commitUrl(c)}">${commitLabel(c)}</a></td>
+    const unchanged = prev && ["bytes", "files", "lines"].every(k => c[k] === prev[k]);
+    return `<tr${unchanged ? ' class="unchanged" title="No change in src/"' : ""}><td><a href="${commitUrl(c)}">${commitLabel(c)}</a></td>
       <td class="subject" title="${escapeHtml(c.subject)}">${escapeHtml(c.subject)}</td>
       <td>${fmtDate(c.date)}</td><td>${full.format(c.lines)}</td>
       <td>${prev ? signed(c.lines - prev.lines, v => full.format(v)) : ""}</td>
