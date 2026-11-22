@@ -15,7 +15,7 @@ import subprocess
 import sys
 import threading
 
-STAT_KEYS = ("bytes", "lines", "code", "theorems", "defs", "imports", "sorries")
+STAT_KEYS = ("bytes", "lines", "code", "theorems", "defs", "imports")
 
 DECL = re.compile(
     rb"^[ \t]*(?:@\[[^\]\n]*\][ \t]*)?"
@@ -24,7 +24,6 @@ DECL = re.compile(
     re.M,
 )
 IMPORT = re.compile(rb"^(?:public[ \t]+)?(?:meta[ \t]+)?import[ \t]", re.M)
-SORRY = re.compile(rb"\bsorry\b")
 CODE_TOKEN = re.compile(rb'/-|--|"|\n')
 COMMENT_TOKEN = re.compile(rb"/-|-/|\n")
 STRING_END = re.compile(rb'(?:[^"\\]|\\.)*"', re.S)
@@ -72,7 +71,6 @@ def blob_stats(text: bytes) -> list:
         theorems,
         len(kinds) - theorems,
         len(IMPORT.findall(text)),
-        len(SORRY.findall(text)),
     ]
 
 

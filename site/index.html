@@ -138,7 +138,6 @@ footer { margin-top: 20px; color: var(--text-muted); font-size: 12px; }
       <dt>Theorems</dt><dd>lines starting with <code>theorem</code> or <code>lemma</code></dd>
       <dt>Definitions</dt><dd>lines starting with <code>def</code>, <code>abbrev</code>, <code>instance</code>, <code>structure</code>, <code>inductive</code>, <code>class</code>, <code>opaque</code> or <code>axiom</code></dd>
       <dt>Import lines</dt><dd>lines starting with <code>import</code>, <code>public import</code> or <code>meta import</code></dd>
-      <dt>sorry</dt><dd>occurrences of the word <code>sorry</code></dd>
     </dl>
     <p>Declarations may carry attributes and modifiers (<code>@[simp] private theorem</code>).
     All counts are regular expressions over the file contents read from git
@@ -309,7 +308,7 @@ function render() {
   document.getElementById("tiles").innerHTML =
     METRICS.map(m => tile(m.label, m.color, compact.format(last[m.key]), last[m.key] - first[m.key], first[m.key], full.format(last[m.key]))).join("") +
     tile("Size", null, fmtBytes(last.bytes), last.bytes - first.bytes, first.bytes, full.format(last.bytes) + " bytes", fmtBytes) +
-    tile("sorry", null, full.format(last.sorries), last.sorries - first.sorries, 0, "");
+    tile("Code lines", null, compact.format(last.code), last.code - first.code, first.code, full.format(last.code));
 
   // Indexed chart
   document.getElementById("legend").innerHTML = METRICS.map(m =>
