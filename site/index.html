@@ -52,6 +52,10 @@ h1 { font-size: 22px; font-weight: 650; margin: 0; letter-spacing: -0.01em; }
   font-size: 11px; font-weight: 500; letter-spacing: 0.02em; color: var(--text-secondary);
   border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; vertical-align: 3px; margin-left: 4px;
 }
+header .meta time, .tip time {
+  color: var(--text-secondary); background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: 5px; padding: 0 5px; white-space: nowrap; font-variant-numeric: tabular-nums;
+}
 header .meta { color: var(--text-muted); font-size: 13px; }
 a { color: inherit; text-decoration-color: var(--text-muted); text-underline-offset: 2px; }
 code { font-size: 0.92em; }
@@ -95,7 +99,8 @@ tr.unchanged td, tr.unchanged a { color: var(--text-muted); }
   background: var(--surface-1); border: 1px solid var(--border); box-shadow: 0 4px 16px rgb(0 0 0 / 0.12);
   font-size: 12px; line-height: 1.4; color: var(--text-secondary); text-decoration: none; pointer-events: none;
 }
-.tip .t { color: var(--text-primary); font-weight: 600; margin-bottom: 3px; }
+.tip .t { color: var(--text-primary); font-weight: 600; margin-bottom: 4px; }
+.tip time { background: var(--surface-0); font-weight: 400; margin-left: 4px; }
 .tip .row { display: flex; align-items: center; gap: 6px; }
 .tip .sw { width: 8px; height: 8px; border-radius: 2px; flex: none; }
 .tip .subject { margin-top: 4px; }
@@ -220,10 +225,11 @@ function showTip({ chart, tooltip }) {
   const rows = tooltip.body.map((b, i) =>
     b.lines.map(l => `<div class="row"><i class="sw" style="background:${swatch(tooltip.labelColors[i])}"></i>${escapeHtml(l)}</div>`).join("") +
     b.after.map(l => `<div class="row">${escapeHtml(l)}</div>`).join("")).join("");
-  tip.innerHTML = `<div class="t">${escapeHtml(tooltip.title.join(" "))}</div>${rows}` +
+  const c = commitAt(chart, tooltip.dataPoints[0].dataIndex);
+  tip.innerHTML = `<div class="t">${commitLabel(c)} <time datetime="${c.date}">${fmtDate(c.date)}</time></div>${rows}` +
     tooltip.afterBody.map(l => `<div class="subject">${escapeHtml(l)}</div>`).join("") +
     `<div class="open">Click to select</div>`;
-  tip.href = commitUrl(commitAt(chart, tooltip.dataPoints[0].dataIndex));
+  tip.href = commitUrl(c);
   tip.hidden = false;
   // Always above the chart, centred on the commit, so the lines stay visible.
   const r = chart.canvas.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
@@ -431,7 +437,7 @@ function render() {
   const xs = commits.map(c => Date.parse(c.date));
 
   document.getElementById("hero").textContent = (100 * last.lines / first.lines).toFixed(1) + "%";
-  document.getElementById("updated").textContent = " · last commit " + fmtDate(last.date);
+  document.getElementById("updated").innerHTML = ` · last commit <time datetime="${last.date}">${fmtDate(last.date)}</time>`;
 
   // Tiles: the current value, and the change from the original.
   const tile = (label, color, key, fmt = compact.format, unit = "") => {
@@ -458,7 +464,6 @@ function render() {
   idxOpts.endLabels_ = innerWidth >= 600;
   if (idxOpts.endLabels_) idxOpts.layout = { padding: { right: 100 } };
   idxOpts.plugins.tooltip.callbacks = {
-    title: items => `${commitLabel(commits[items[0].dataIndex])} · ${fmtDate(xs[items[0].dataIndex])}`,
     label: item => {
       const m = METRICS[item.datasetIndex], c = commits[item.dataIndex];
       return `${m.label}: ${item.raw.y.toFixed(1)}%  (${full.format(c[m.key])})`;
@@ -478,7 +483,6 @@ function render() {
     const opts = baseOptions(v => compact.format(v));
     opts.scales.y.beginAtZero = true;
     opts.plugins.tooltip.callbacks = {
-      title: items => `${commitLabel(commits[items[0].dataIndex])} · ${fmtDate(xs[items[0].dataIndex])}`,
       label: item => `${full.format(item.raw.y)}  (${(100 * item.raw.y / first[m.key]).toFixed(1)}% of original)`,
       afterLabel: item => m.sub(commits[item.dataIndex]),
       afterBody: items => commits[items[0].dataIndex].subject,
@@ -513,7 +517,6 @@ function render() {
   }
   dOpts.layout = { padding: horizontal ? { right: 36 } : { top: 16 } };
   dOpts.plugins.tooltip.callbacks = {
-    title: items => `${commitLabel(deltas[items[0].dataIndex].c)} · ${fmtDate(deltas[items[0].dataIndex].c.date)}`,
     label: item => `${signed(item.raw, v => full.format(v))} lines`,
     afterBody: items => deltas[items[0].dataIndex].c.subject,
   };
@@ -562,7 +565,7 @@ fetch("data.json" + fresh, { cache: "no-store" }).then(r => r.json()).then(start
 // The time of the last poll, written by the workflow at each poll (every run deploys it).
 fetch("polled.json" + fresh, { cache: "no-store" })
   .then(r => r.json())
-  .then(d => { document.getElementById("polled").textContent = `polled every 15 min, last at ${fmtDate(d.polled)}`; })
+  .then(d => { document.getElementById("polled").innerHTML = `polled every 15 min, last at <time datetime="${escapeHtml(d.polled)}">${fmtDate(d.polled)}</time>`; })
   .catch(() => {});
 </script>
 </body>
