@@ -170,7 +170,6 @@ tr.unchanged td, tr.unchanged a { color: var(--text-muted); }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script>
 const REPO = "https://github.com/leanprover-community/riemann-hypothesis";
-const EVENTS = [{ pr: 66, label: "Lean 4.36 port" }];
 const METRICS = [
   { key: "lines",   label: "Lines",        color: "--m-lines",   sub: c => `${full.format(c.code)} code lines` },
   { key: "decls",   label: "Declarations", color: "--m-decls",   sub: c => `${full.format(c.theorems)} theorems · ${full.format(c.defs)} definitions` },
@@ -294,23 +293,12 @@ document.addEventListener("click", e => {
 document.addEventListener("keydown", e => { if (e.key === "Escape") unpin(); });
 tip.addEventListener("click", () => setTimeout(unpin));
 
-// Vertical crosshair at the hovered x, and triangles on the x axis for EVENTS.
+// Vertical crosshair at the hovered (or pinned) commit.
 const overlay = {
   id: "overlay",
   afterDatasetsDraw(chart) {
-    const { ctx, chartArea: a, scales: { x } } = chart;
+    const { ctx, chartArea: a } = chart;
     ctx.save();
-    for (const ev of chart.options.events_ || []) {
-      const px = x.getPixelForValue(ev.x);
-      if (px < a.left || px > a.right) continue;
-      // A small triangle on the x axis with its label, clear of the lines higher up.
-      ctx.fillStyle = css("--text-muted");
-      ctx.beginPath(); ctx.moveTo(px - 5, a.bottom); ctx.lineTo(px + 5, a.bottom); ctx.lineTo(px, a.bottom - 7);
-      ctx.closePath(); ctx.fill();
-      ctx.font = "11px " + Chart.defaults.font.family;
-      ctx.textAlign = px > a.right - 90 ? "right" : "left"; ctx.textBaseline = "alphabetic";
-      ctx.fillText(ev.label, px + (ctx.textAlign === "left" ? 8 : -8), a.bottom - 2);
-    }
     const act = chart.tooltip?.getActiveElements?.() || [];
     if ((pinned?.chart === chart || act.length) && chart.config.type === "line") {
       const px = pinned?.chart === chart ? pinned.x : act[0].element.x;
@@ -384,10 +372,6 @@ function baseOptions(yTicks) {
       legend: { display: false },
       tooltip: { enabled: false, external: showTip },
     },
-    events_: EVENTS.map(ev => {
-      const c = commits.find(c => c.pr === ev.pr);
-      return c && { x: Date.parse(c.date), label: ev.label };
-    }).filter(Boolean),
     onClick: pinTip,
   };
 }
@@ -491,7 +475,6 @@ function render() {
   const [cat, val] = horizontal ? ["y", "x"] : ["x", "y"];
   const dOpts = baseOptions(v => signed(v));
   dOpts.indexAxis = cat;
-  dOpts.events_ = [];
   dOpts.interaction = { mode: "nearLine" };
   dOpts.scales = {
     [cat]: { type: "category", grid: { display: false }, border: { color: css("--grid") },
