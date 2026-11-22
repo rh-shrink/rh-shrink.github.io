@@ -9,6 +9,9 @@ Statistics are computed once per blob, so consecutive commits cost only the
 files they changed.
 """
 import argparse
+import collections
+import hashlib
+import itertools
 import json
 import multiprocessing
 import os
@@ -18,8 +21,12 @@ import sys
 import threading
 
 # 2: declarations and imports inside comments are not counted; code lines per folder.
-VERSION = 2
-STAT_KEYS = ("bytes", "lines", "code", "theorems", "defs", "imports")
+# 3: heartbeat overrides, omega/nlinarith, declaration lengths, repeated theorem statements.
+VERSION = 3
+STAT_KEYS = ("bytes", "lines", "code", "theorems", "defs", "imports", "heartbeats", "arith",
+             "statements")
+# Declaration lengths in code lines, bin k holding 2^k to 2^(k+1) - 1 lines; the last bin is open.
+LENGTH_BINS = 10
 
 # possessive quantifiers (++, *+, ?+): no backtracking, a third faster on this source
 DECL = re.compile(
@@ -33,6 +40,17 @@ CODE_TOKEN = re.compile(rb'/-|--|"')
 COMMENT_TOKEN = re.compile(rb"/-|-/")
 STRING_END = re.compile(rb'(?:[^"\\]|\\.)*"', re.S)
 NOT_NEWLINE = re.compile(rb"[^\n]")
+THEOREM = re.compile(
+    rb"^[ \t]*+(?:@\[[^\]\n]*+\][ \t]*+)?+"
+    rb"(?:(?:public|private|protected|noncomputable|partial|unsafe|nonrec|meta|scoped|local)[ \t]++)*+"
+    rb"(?:theorem|lemma)[ \t]+[^\s:({\[]+",
+    re.M,
+)
+HEARTBEATS = re.compile(rb"\bset_option[ \t]+maxHeartbeats\b")
+ARITH = re.compile(rb"\b(?:omega|nlinarith)\b")
+WHITE = re.compile(rb"\s+")
+SHORTEST_STATEMENT = 30  # shorter statements (": a = a") repeat naturally
+
 # The first line of a file that is not part of its header (module, prelude, imports): Lean allows
 # imports only there.
 NOT_HEADER = re.compile(
@@ -86,22 +104,64 @@ def header(text: bytes) -> bytes:
         k *= 8
 
 
-def blob_stats(text: bytes) -> list:
+def statement(code: bytes, pos: int):
+    """The statement of the theorem whose name ends at pos: up to ":=", white space normalised;
+    None if not found within 3000 bytes or shorter than SHORTEST_STATEMENT."""
+    rest = code[pos : pos + 3000]
+    cut = rest.find(b":=")
+    s = WHITE.sub(b" ", rest[:cut]).strip() if cut > 0 else b""
+    return s if len(s) >= SHORTEST_STATEMENT else None
+
+
+def blob_stats(text: bytes):
+    """The STAT_KEYS counts followed by LENGTH_BINS declaration-length counts, and the hashes of
+    the theorem statements (stable: the same in every process)."""
     lines = text.count(b"\n") + (1 if text and not text.endswith(b"\n") else 0)
     code = without_comments(text)
-    kinds = [m.group(1) for m in DECL.finditer(code)]
+    decls = list(DECL.finditer(code))
+    kinds = [m.group(1) for m in decls]
     # code lines: the lines with something but white space (translate and split run in C)
     parts = code.translate(None, b" \t\r\f\v").split(b"\n")
     end = NOT_HEADER.search(code)
     theorems = sum(k in (b"theorem", b"lemma") for k in kinds)
-    return [
+    # each declaration's code lines: from its first line to the next declaration or the end
+    before = list(itertools.accumulate((1 if p else 0 for p in parts), initial=0))
+    at, line, pos = [], 0, 0
+    for m in decls:
+        line += code.count(b"\n", pos, m.start())
+        pos = m.start()
+        at.append(line)
+    lengths = [0] * LENGTH_BINS
+    for a, b in zip(at, at[1:] + [len(parts)]):
+        lengths[min(max(before[b] - before[a], 1).bit_length(), LENGTH_BINS) - 1] += 1
+    hashes = []
+    for m in THEOREM.finditer(code):
+        s = statement(code, m.end())
+        if s:
+            hashes.append(int.from_bytes(hashlib.blake2b(s, digest_size=8).digest(), "big"))
+    counts = [
         len(text),
         lines,
         len(parts) - parts.count(b""),
         theorems,
         len(kinds) - theorems,
         len(IMPORT.findall(code, 0, end.start() if end else len(code))),
+        len(HEARTBEATS.findall(code)),
+        len(ARITH.findall(code)),
+        len(hashes),
     ]
+    return counts + lengths, tuple(hashes)
+
+
+def summary(stats):
+    """The counts of a commit from the blob_stats of its files: STAT_KEYS, "lengths" and
+    "repeats" (theorem statements that repeat an earlier one word for word)."""
+    total = [sum(col) for col in zip(*(s for s, _ in stats))]
+    seen = collections.Counter(h for _, hs in stats for h in hs)
+    out = dict(zip(STAT_KEYS, total))
+    out["lengths"] = total[len(STAT_KEYS):]
+    out["repeats"] = sum(seen.values()) - len(seen)
+    return out
 
 
 def git(repo, *args, **kw):
@@ -177,21 +237,37 @@ def main():
     print(f"{len(new)} new commit(s)", file=sys.stderr)
 
     pool = multiprocessing.Pool()  # files are measured on all cores
+    # The theorem statements of the commit, kept from one commit to the next: only the files
+    # that changed are added or taken away.
+    present, statements = collections.Counter(), collections.Counter()
     for sha, date, subject in new:
         files = lean_blobs(args.repo, sha, args.prefix)
         blobs = [b for _, b in files]
         missing = sorted(set(blobs) - cache.keys())
         for blob, stats in pool.imap_unordered(stats_of, read_blobs(args.repo, missing), chunksize=64):
             cache[blob] = stats
-        totals = [sum(cache[b][i] for b in blobs) for i in range(len(STAT_KEYS))]
+        now = collections.Counter(blobs)
+        for b, k in (now - present).items():
+            for h in cache[b][1]:
+                statements[h] += k
+        for b, k in (present - now).items():
+            for h in cache[b][1]:
+                statements[h] -= k
+                if statements[h] <= 0:
+                    del statements[h]
+        present = now
+        width = len(STAT_KEYS) + LENGTH_BINS
+        totals = [sum(cache[b][0][i] for b in blobs) for i in range(width)]
         code = STAT_KEYS.index("code")
         dirs = {}
         for folder, b in files:
-            dirs[folder] = dirs.get(folder, 0) + cache[b][code]
+            dirs[folder] = dirs.get(folder, 0) + cache[b][0][code]
         pr = re.match(r"Merge pull request #(\d+)", subject)
         entry = {"sha": sha, "date": date, "subject": subject,
                  "pr": int(pr.group(1)) if pr else None, "files": len(blobs)}
         entry.update(zip(STAT_KEYS, totals))
+        entry["lengths"] = totals[len(STAT_KEYS):]
+        entry["repeats"] = sum(statements.values()) - len(statements)
         entry["dirs"] = dict(sorted(dirs.items()))
         data["commits"].append(entry)
         print(f"{sha[:8]} {entry['lines']:>10} lines {len(missing):>6} new blobs",

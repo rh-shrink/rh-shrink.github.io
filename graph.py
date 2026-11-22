@@ -15,7 +15,8 @@ Writes, for the first first-parent commit ("original") and the last one ("now"):
   the ideal build (as shares of the span).
 Only imports of modules of the project count (not Mathlib and other dependencies).
 
-With --only, just the commit REF, as "now" (used once for Mathlib, the comparison on the site:
+With --only, just the commit REF, as "now", together with the counts collect.py makes for the
+project's commits ("text"; used once for Mathlib, the comparison on the site:
 graph.py MATHLIB site/mathlib.json --ref HEAD --prefix Mathlib/ --package Mathlib. --only).
 """
 import argparse
@@ -26,11 +27,11 @@ import time
 
 import numpy as np
 
-from collect import git, header, read_blobs, without_comments
+from collect import blob_stats, git, header, lean_blobs, read_blobs, summary as text_summary, without_comments
 
 IMPORT_LINE = re.compile(
     rb"^(?:public[ \t]+)?(?:meta[ \t]+)?import[ \t]+(?:all[ \t]+)?([^\n]*)", re.M)
-VERSION = 3  # of the output; the workflow computes it again when this changes
+VERSION = 4  # of the output; the workflow computes it again when this changes
 BINS = 160
 SAMPLES = 300
 LEVELS = 4
@@ -198,6 +199,9 @@ def main():
     for key, sha in (("now", shas[-1]),) if args.only else (("original", shas[0]), ("now", shas[-1])):
         names, imports, cost = modules(args.repo, sha, args.prefix, args.package)
         result[key] = {"sha": sha, **summary(names, imports, cost)}
+        if args.only:
+            blobs = [b for _, b in lean_blobs(args.repo, sha, args.prefix)]
+            result[key]["text"] = text_summary([blob_stats(t) for _, t in read_blobs(args.repo, blobs)])
     with open(args.out, "w") as f:
         json.dump(result, f, separators=(",", ":"))
         f.write("\n")
