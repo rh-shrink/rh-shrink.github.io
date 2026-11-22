@@ -28,7 +28,7 @@ from collect import git, header, read_blobs
 
 IMPORT_LINE = re.compile(
     rb"^(?:public[ \t]+)?(?:meta[ \t]+)?import[ \t]+(?:all[ \t]+)?([^\n]*)", re.M)
-VERSION = 1  # of the output; the workflow computes it again when this changes
+VERSION = 2  # of the output; the workflow computes it again when this changes
 BINS = 160
 SAMPLES = 400
 
@@ -163,6 +163,7 @@ def summary(names, imports):
         "profile": profile,
         "reach": {
             "mean": float(r.mean()),
+            "unused": int((r == 0).sum()),  # imported by no module
             "rank": picks.tolist(),
             "count": r[rank[picks]].tolist(),
             "name": [names[i] for i in rank[picks]],
