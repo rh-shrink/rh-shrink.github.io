@@ -383,11 +383,20 @@ const tipLabels = {
   },
 };
 
+// Canvas resolution: the screen's, times the pinch-zoom factor, so that zooming in stays sharp
+// (capped: a canvas grows with the square of it).
+const sharpness = () => Math.min(6, window.devicePixelRatio * (window.visualViewport?.scale || 1));
+let sharpTimer;
+window.visualViewport?.addEventListener("resize", () => {
+  clearTimeout(sharpTimer);
+  sharpTimer = setTimeout(() => charts.forEach(c => { c.options.devicePixelRatio = sharpness(); c.resize(); }), 150);
+});
+
 function baseOptions(yTicks) {
   const xs = commits.map(c => Date.parse(c.date));
   const muted = css("--text-muted"), grid = css("--grid");
   return {
-    maintainAspectRatio: false, animation: false,
+    maintainAspectRatio: false, animation: false, devicePixelRatio: sharpness(),
     // Touch: popups only from taps, so scrolling over a chart shows none.
     events: touch ? ["click"] : ["mousemove", "mouseout", "click"],
     interaction: { mode: "nearLine" },
@@ -413,8 +422,8 @@ function lineDataset(m, values, fill) {
   return {
     label: m.label, data: values, borderColor: color, backgroundColor: color, borderWidth: 2,
     // A dot at every commit, also where the numbers do not change.
-    stepped: "before", pointRadius: 2.5, pointHoverRadius: 5, pointStyle: "circle",
-    pointBackgroundColor: color, pointBorderColor: css("--surface-1"), pointBorderWidth: 1,
+    stepped: "before", pointRadius: 2, pointHoverRadius: 5, pointStyle: "circle",
+    pointBackgroundColor: color, pointBorderWidth: 0,
     pointHoverBorderColor: css("--surface-1"), pointHoverBorderWidth: 2,
     clip: 6,  // whole dots at the chart edges
     fill: fill ? { target: "start" } : false,
