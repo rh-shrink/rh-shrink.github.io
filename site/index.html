@@ -469,7 +469,12 @@ function render() {
   idxOpts.scales.y.min = 0;
   idxOpts.scales.y.max = Math.max(100, Math.ceil(Math.max(...pcts) / 10 - 0.01) * 10);
   idxOpts.endLabels_ = innerWidth >= 600;
-  if (idxOpts.endLabels_) idxOpts.layout = { padding: { right: 130 } };
+  if (idxOpts.endLabels_) {
+    // Room for the longest end label, measured in the font this browser uses.
+    const m = document.createElement("canvas").getContext("2d");
+    m.font = "12px " + Chart.defaults.font.family;
+    idxOpts.layout = { padding: { right: 30 + Math.max(...METRICS.map(x => m.measureText(x.label).width)) } };
+  }
   idxOpts.plugins.tooltip.callbacks = {
     label: item => {
       const m = METRICS[item.datasetIndex], c = commits[item.dataIndex];
