@@ -2,7 +2,9 @@ name: Update
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    # Every 15 minutes, off the busy full and quarter hours: GitHub delays or drops
+    # scheduled runs under load, most at those times.
+    - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
   push:
     branches: [main]
@@ -13,10 +15,13 @@ concurrency:
 
 env:
   SOURCE: https://github.com/leanprover-community/riemann-hypothesis
+  # Up to three attempts, for brief network failures.
+  RETRY: 'retry() { for i in 1 2 3; do "$@" && return 0; echo "attempt $i failed: $*" >&2; sleep 15; done; return 1; }'
 
 jobs:
   measure:
     runs-on: ubuntu-latest
+    timeout-minutes: 15  # a hanging run must not hold up the queued ones
     permissions:
       contents: write
     outputs:
@@ -27,7 +32,8 @@ jobs:
       - name: Check for new commits
         id: check
         run: |
-          head=$(git ls-remote "$SOURCE" refs/heads/main | cut -f1)
+          eval "$RETRY"
+          head=$(retry git ls-remote "$SOURCE" refs/heads/main | cut -f1)
           last=$(python3 -c 'import json; c = json.load(open("site/data.json"))["commits"]; print(c[-1]["sha"] if c else "")')
           echo "source main: $head, last measured: $last"
           # The page shows this time as "last at": the moment of this poll.
@@ -37,12 +43,15 @@ jobs:
       - name: Measure new commits
         if: steps.check.outputs.new == 'true'
         run: |
-          git clone --quiet --bare --single-branch --branch main "$SOURCE" "$RUNNER_TEMP/source.git"
+          eval "$RETRY"
+          clone() { rm -rf "$RUNNER_TEMP/source.git"; git clone --quiet --bare --single-branch --branch main "$SOURCE" "$RUNNER_TEMP/source.git"; }
+          retry clone
           python3 collect.py "$RUNNER_TEMP/source.git" site/data.json
 
       - name: Commit data
         id: commit
         run: |
+          eval "$RETRY"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           # GitHub disables scheduled workflows after 60 days without repository activity.
@@ -55,7 +64,7 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             git commit --quiet -m "Update data"
-            git push --quiet
+            retry git push --quiet
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -72,6 +81,7 @@ jobs:
     needs: measure
     if: needs.measure.outputs.deploy == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       pages: write
       id-token: write

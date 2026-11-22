@@ -56,6 +56,10 @@ header .meta time, .tip time {
   color: var(--text-secondary); background: var(--surface-1); border: 1px solid var(--border);
   border-radius: 5px; padding: 0 5px; white-space: nowrap; font-variant-numeric: tabular-nums;
 }
+header .meta .delayed {
+  color: var(--text-primary); background: rgb(250 178 25 / 0.18); border: 1px solid #fab219;
+  border-radius: 5px; padding: 0 5px; white-space: nowrap;
+}
 header .meta { color: var(--text-muted); font-size: 13px; }
 a { color: inherit; text-decoration-color: var(--text-muted); text-underline-offset: 2px; }
 code { font-size: 0.92em; }
@@ -565,7 +569,12 @@ fetch("data.json" + fresh, { cache: "no-store" }).then(r => r.json()).then(start
 // The time of the last poll, written by the workflow at each poll (every run deploys it).
 fetch("polled.json" + fresh, { cache: "no-store" })
   .then(r => r.json())
-  .then(d => { document.getElementById("polled").innerHTML = `polled every 15 min, last at <time datetime="${escapeHtml(d.polled)}">${fmtDate(d.polled)}</time>`; })
+  .then(d => {
+    // GitHub may delay or skip scheduled runs: say so when the last poll is over an hour old.
+    const late = Date.now() - Date.parse(d.polled) > 3600e3;
+    document.getElementById("polled").innerHTML = `polled every 15 min, last at <time datetime="${escapeHtml(d.polled)}">${fmtDate(d.polled)}</time>` +
+      (late ? ' <span class="delayed">⚠ polling delayed</span>' : "");
+  })
   .catch(() => {});
 </script>
 </body>
