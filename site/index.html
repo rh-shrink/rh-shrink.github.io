@@ -575,15 +575,21 @@ const fresh = "?t=" + Date.now();
 fetch("data.json" + fresh, { cache: "no-store" }).then(r => r.json()).then(start);
 
 // The time of the last poll, written by the workflow at each poll (every run deploys it).
-fetch("polled.json" + fresh, { cache: "no-store" })
-  .then(r => r.json())
-  .then(d => {
-    // GitHub may delay or skip scheduled runs: say so when the last poll is over an hour old.
-    const late = Date.now() - Date.parse(d.polled) > 3600e3;
-    document.getElementById("polled").innerHTML = `polled every 15 min, last at <time datetime="${escapeHtml(d.polled)}">${fmtDate(d.polled)}</time>` +
-      (late ? ' <span class="delayed">⚠ polling delayed</span>' : "");
-  })
-  .catch(() => {});
+// GitHub may delay or skip scheduled runs: when the schedule has not polled for 30 minutes (two
+// missed polls), say so; polls from other runs (pushes to this site) do not count. Checked again
+// every 5 minutes, so a page left open shows it too.
+function showPolled() {
+  fetch("polled.json?t=" + Date.now(), { cache: "no-store" })
+    .then(r => r.json())
+    .then(d => {
+      const late = !d.scheduled || Date.now() - Date.parse(d.scheduled) > 30 * 60e3;
+      document.getElementById("polled").innerHTML = `polled every 15 min, last at <time datetime="${escapeHtml(d.polled)}">${fmtDate(d.polled)}</time>` +
+        (late ? ' <span class="delayed">⚠ polling delayed</span>' : "");
+    })
+    .catch(() => {});
+}
+showPolled();
+setInterval(showPolled, 5 * 60e3);
 </script>
 </body>
 </html>
