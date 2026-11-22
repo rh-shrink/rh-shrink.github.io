@@ -99,7 +99,7 @@ h2 { font-size: 14px; font-weight: 600; margin: 0 0 10px; color: var(--text-seco
 .chart { position: relative; height: 320px; }
 .chart canvas { -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; }
 .chart.small { height: 200px; }
-.chart.compare { height: 190px; }
+.chart.compare { height: 280px; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0; }
 details { margin-top: 12px; }
 summary { cursor: pointer; color: var(--text-secondary); font-size: 14px; font-weight: 600; }
@@ -200,7 +200,7 @@ footer {
 
   <section class="card" id="c-compare" hidden>
     <h2>Compared with Mathlib</h2>
-    <p class="hint">How many times as frequent as in Mathlib (Mathlib = 1×, log scale), originally and now.</p>
+    <p class="hint">How many times as frequent as in Mathlib (Mathlib = 1×, the dashed line; log scale), originally and now.</p>
     <div class="legend"><span><i class="solid" style="background:var(--m-lines);opacity:.45"></i>Originally</span><span><i class="solid" style="background:var(--m-lines)"></i>Now</span></div>
     <div class="chart compare"><canvas></canvas></div>
   </section>
@@ -817,30 +817,30 @@ function renderCompare() {
   const first = commits[0], last = commits[commits.length - 1];
   const blue = css("--m-lines"), muted = css("--text-muted"), grid = css("--grid");
   const sum = a => a.reduce((x, y) => x + y, 0);
-  // on narrow screens the row names take two lines
+  // one column per measure, the names on two lines (short ones on narrow screens)
   const ROWS = [
-    { label: "maxHeartbeats overrides", value: v => 1e4 * v.heartbeats / v.code, unit: " per 10 000 code lines" },
-    { label: "Repeated theorem statements", value: v => 100 * v.repeats / v.statements, unit: "% of theorem statements" },
-    { label: "omega and nlinarith", value: v => 1e4 * v.arith / v.code, unit: " per 10 000 code lines" },
-    { label: "Declarations of 64+ code lines", value: v => 100 * sum(v.lengths.slice(6)) / sum(v.lengths), unit: "% of declarations" },
+    { label: "maxHeartbeats overrides", short: ["heartbeat", "overrides"], value: v => 1e4 * v.heartbeats / v.code, unit: " per 10 000 code lines" },
+    { label: "Repeated theorem statements", short: ["repeated", "statements"], value: v => 100 * v.repeats / v.statements, unit: "% of theorem statements" },
+    { label: "omega and nlinarith", short: ["omega,", "nlinarith"], value: v => 1e4 * v.arith / v.code, unit: " per 10 000 code lines" },
+    { label: "Declarations of 64+ code lines", short: ["64+ line", "declarations"], value: v => 100 * sum(v.lengths.slice(6)) / sum(v.lengths), unit: "% of declarations" },
   ];
   const fmt = v => (v >= 10 ? v.toFixed(0) : v >= 1 ? v.toFixed(1) : v.toPrecision(2));
-  const points = v => ROWS.map((r, i) => ({ x: r.value(v) / r.value(ml), y: i, v: r.value(v), m: r.value(ml), unit: r.unit }));
-  const names = ROWS.map(r => (innerWidth < 600 ? r.label.replace(/ (?=\S+ \S+$)| (?=[^ ]+$)/, "\n").split("\n") : r.label));
+  const points = v => ROWS.map((r, i) => ({ x: i, y: r.value(v) / r.value(ml), v: r.value(v), m: r.value(ml), unit: r.unit }));
+  const names = ROWS.map(r => (innerWidth < 600 ? r.short : r.label.replace(/ (?=\S+ \S+$)| (?=[^ ]+$)/, "\n").split("\n")));
   const card = document.getElementById("c-compare");
   card.hidden = false;
-  const top = Math.max(...[first, last].flatMap(v => points(v).map(p => p.x)));
+  const top = Math.max(...[first, last].flatMap(v => points(v).map(p => p.y)));
   // a line from originally to now in each row, and Mathlib's 1x
   const guides = {
     id: "guides",
     beforeDatasetsDraw(chart) {
-      const { ctx, chartArea: a, scales: { x } } = chart, [o, n] = chart.data.datasets.map((d, k) => chart.getDatasetMeta(k).data);
+      const { ctx, chartArea: a, scales: { y } } = chart, [o, n] = chart.data.datasets.map((d, k) => chart.getDatasetMeta(k).data);
       ctx.save();
       ctx.strokeStyle = muted; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
-      const one = x.getPixelForValue(1);
-      ctx.beginPath(); ctx.moveTo(one, a.top); ctx.lineTo(one, a.bottom); ctx.stroke();
-      ctx.setLineDash([]); ctx.fillStyle = muted; ctx.font = "11px " + Chart.defaults.font.family; ctx.textAlign = "left";
-      ctx.fillText("Mathlib", one + 4, a.top + 9);
+      const one = y.getPixelForValue(1);
+      ctx.beginPath(); ctx.moveTo(a.left, one); ctx.lineTo(a.right, one); ctx.stroke();
+      ctx.setLineDash([]); ctx.fillStyle = muted; ctx.font = "11px " + Chart.defaults.font.family; ctx.textAlign = "right";
+      ctx.fillText("Mathlib", a.right, one - 5);
       ctx.strokeStyle = css("--border"); ctx.lineWidth = 2;
       o.forEach((p, i) => { ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(n[i].x, n[i].y); ctx.stroke(); });
       ctx.restore();
@@ -854,17 +854,17 @@ function renderCompare() {
       maintainAspectRatio: false, animation: false, devicePixelRatio: sharpness(),
       events: touch ? ["click"] : ["mousemove", "mouseout", "click"],
       interaction: { mode: "nearest", intersect: false, axis: "xy" },
-      layout: { padding: { right: 12 } },
+      layout: { padding: { top: 6 } },
       scales: {
-        x: { type: "logarithmic", min: 0.5, max: 2 * top, grid: { color: grid }, border: { display: false },
+        y: { type: "logarithmic", min: 0.5, max: 2 * top, grid: { color: grid }, border: { display: false },
              afterBuildTicks: scale => { scale.ticks = scale.ticks.filter(t => Number.isInteger(Math.log10(t.value))); },  // decades only
-             ticks: { color: muted, maxRotation: 0, callback: v => compact.format(v) + "×" } },
-        y: { type: "category", labels: names, offset: true, grid: { display: false }, border: { display: false },
-             ticks: { color: css("--text-secondary") } },
+             ticks: { color: muted, callback: v => compact.format(v) + "×" } },
+        x: { type: "category", labels: names, offset: true, grid: { display: false }, border: { display: false },
+             ticks: { color: css("--text-secondary"), maxRotation: 0, autoSkip: false } },
       },
       plugins: { legend: { display: false }, tooltip: { enabled: false, external: chartTip, callbacks: {
-        title: items => ROWS[items[0].raw.y].label,
-        label: item => `${item.dataset.label}: ${fmt(item.raw.v)}${item.raw.unit}, ${fmt(item.raw.x)}× Mathlib's ${fmt(item.raw.m)}`,
+        title: items => ROWS[items[0].raw.x].label,
+        label: item => `${item.dataset.label}: ${fmt(item.raw.v)}${item.raw.unit}, ${fmt(item.raw.y)}× Mathlib's ${fmt(item.raw.m)}`,
       } } },
     },
     plugins: [guides],
