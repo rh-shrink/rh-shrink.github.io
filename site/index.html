@@ -554,15 +554,14 @@ function start(d) {
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
 }
 
-fetch("data.json", { cache: "no-store" }).then(r => r.json()).then(start);
+// A fresh query string on each load bypasses the CDN cache of GitHub Pages.
+const fresh = "?t=" + Date.now();
+fetch("data.json" + fresh, { cache: "no-store" }).then(r => r.json()).then(start);
 
-// The time of the last poll: the last successful run of the workflow, from GitHub's public API.
-fetch("https://api.github.com/repos/rh-shrink/rh-shrink.github.io/actions/workflows/update.yml/runs?status=success&per_page=1")
+// The time of the last poll, written by the workflow at each poll (every run deploys it).
+fetch("polled.json" + fresh, { cache: "no-store" })
   .then(r => r.json())
-  .then(d => {
-    const run = d.workflow_runs?.[0];
-    if (run) document.getElementById("polled").textContent = `polled every 15 min, last at ${fmtDate(run.run_started_at)}`;
-  })
+  .then(d => { document.getElementById("polled").textContent = `polled every 15 min, last at ${fmtDate(d.polled)}`; })
   .catch(() => {});
 </script>
 </body>
