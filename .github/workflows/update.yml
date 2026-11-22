@@ -57,7 +57,26 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = schedule ] || [ "$DISPATCH_SOURCE" = external-cron ]; then scheduled=$now; fi
           echo "{\"polled\":\"$now\",\"scheduled\":\"$scheduled\"}" > site/polled.json
           cat site/polled.json
-          echo "new=$([ "$head" != "$last" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          # The import graph pictures (graph.json, not committed): the live file when it is of this
+          # commit and of this graph.py VERSION, otherwise computed again below.
+          gv=$(sed -n 's/^VERSION = \([0-9]*\).*/\1/p' graph.py)
+          if retry curl -fs "https://rh-shrink.github.io/graph.json?t=$RANDOM" -o site/graph.json &&
+             python3 -c 'import json, sys; g = json.load(open("site/graph.json")); sys.exit(g.get("version") != int(sys.argv[1]) or g["now"]["sha"] != sys.argv[2])' "$gv" "$head"; then
+            graph=current
+          else
+            rm -f site/graph.json; graph=stale
+          fi
+          echo "import graph: $graph"
+          echo "graph=$graph" >> "$GITHUB_OUTPUT"
+          echo "new=$([ "$head" != "$last" ] || [ "$graph" = stale ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      # numpy for graph.py, Pillow for card.py
+      - name: Python packages
+        continue-on-error: true
+        run: |
+          eval "$RETRY"
+          python3 -m venv "$RUNNER_TEMP/venv"
+          retry "$RUNNER_TEMP/venv/bin/pip" install --quiet numpy pillow
 
       - name: Measure new commits
         if: steps.check.outputs.new == 'true'
@@ -87,13 +106,17 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
+      # Without it the page leaves out the import graph pictures; the deploy goes on.
+      - name: Import graph
+        if: steps.check.outputs.graph == 'stale'
+        continue-on-error: true
+        run: |
+          "$RUNNER_TEMP/venv/bin/python" graph.py "$RUNNER_TEMP/source.git" site/graph.json
+
       # The link preview (Open Graph image); not committed. A failure here must not stop the deploy.
       - name: Draw link preview
         continue-on-error: true
         run: |
-          eval "$RETRY"
-          python3 -m venv "$RUNNER_TEMP/venv"
-          retry "$RUNNER_TEMP/venv/bin/pip" install --quiet pillow
           "$RUNNER_TEMP/venv/bin/python" card.py site/data.json site/card.png
 
       # Every run deploys, so that polled.json is current. Uploaded here, not in the deploy job:
