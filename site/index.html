@@ -118,7 +118,7 @@ footer { margin-top: 20px; color: var(--text-muted); font-size: 12px; }
   <div class="grid2" id="multiples"></div>
 
   <section class="card">
-    <h2>Lines added and removed per commit</h2>
+    <h2>Lines added or removed by each commit that changes <code>src/</code></h2>
     <div class="chart small"><canvas id="chart-delta"></canvas></div>
   </section>
 
@@ -197,9 +197,9 @@ const overlay = {
     for (const ev of chart.options.events_ || []) {
       const px = x.getPixelForValue(ev.x);
       if (px < a.left || px > a.right) continue;
-      ctx.strokeStyle = css("--text-muted"); ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
+      ctx.strokeStyle = css("--text-muted"); ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke();
-      ctx.setLineDash([]); ctx.fillStyle = css("--text-muted"); ctx.font = "11px " + Chart.defaults.font.family;
+      ctx.fillStyle = css("--text-muted"); ctx.font = "11px " + Chart.defaults.font.family;
       ctx.textAlign = px > a.right - 90 ? "right" : "left";
       ctx.fillText(ev.label, px + (ctx.textAlign === "left" ? 4 : -4), a.top + 10);
     }
@@ -235,6 +235,28 @@ const endLabels = {
   },
 };
 
+// The value at the tip of each bar.
+const tipLabels = {
+  id: "tipLabels",
+  afterDatasetsDraw(chart) {
+    const { ctx } = chart, ds = chart.data.datasets[0];
+    ctx.save();
+    ctx.font = "11px " + Chart.defaults.font.family; ctx.fillStyle = css("--text-secondary");
+    const horizontal = chart.options.indexAxis === "y";
+    chart.getDatasetMeta(0).data.forEach((bar, i) => {
+      const v = ds.data[i], out = v < 0 ? 1 : -1;  // direction away from the baseline
+      if (horizontal) {
+        ctx.textAlign = v < 0 ? "right" : "left"; ctx.textBaseline = "middle";
+        ctx.fillText(signed(v), bar.x - 4 * out, bar.y);
+      } else {
+        ctx.textAlign = "center"; ctx.textBaseline = v < 0 ? "top" : "bottom";
+        ctx.fillText(signed(v), bar.x, bar.y + 4 * out);
+      }
+    });
+    ctx.restore();
+  },
+};
+
 function baseOptions(yTicks) {
   const xs = commits.map(c => Date.parse(c.date));
   const muted = css("--text-muted"), grid = css("--grid");
@@ -244,7 +266,7 @@ function baseOptions(yTicks) {
     scales: {
       x: { type: "linear", min: xs[0], max: xs[xs.length - 1], grid: { display: false }, border: { color: grid },
            afterBuildTicks: timeTicks, ticks: { color: muted, maxRotation: 0, callback: v => fmtTick(v) } },
-      y: { grid: { color: grid }, border: { display: false }, grace: "8%",
+      y: { grid: { color: grid }, border: { display: false },
            ticks: { color: muted, maxTicksLimit: 6, callback: yTicks } },
     },
     plugins: {
@@ -280,7 +302,7 @@ function gradient(ctx, color) {
   const { chart } = ctx, a = chart.chartArea;
   if (!a) return color + "22";
   const g = chart.ctx.createLinearGradient(0, a.top, 0, a.bottom);
-  g.addColorStop(0, color + "40"); g.addColorStop(1, color + "05");
+  g.addColorStop(0, color + "24"); g.addColorStop(1, color + "08");
   return g;
 }
 
@@ -315,6 +337,10 @@ function render() {
   document.getElementById("legend").innerHTML = METRICS.map(m =>
     `<span><i style="background:${css(m.color)}"></i>${m.label}</span>`).join("");
   const idxOpts = baseOptions(v => v + "%");
+  const pcts = METRICS.flatMap(m => commits.map(c => 100 * c[m.key] / first[m.key]));
+  idxOpts.scales.y.min = Math.floor(Math.min(...pcts) / 10) * 10;
+  // A hair above 100% (the +42 lines of Challenge.lean) is not worth a 110% tick.
+  idxOpts.scales.y.max = Math.ceil(Math.max(...pcts) / 10 - 0.01) * 10;
   idxOpts.endLabels_ = innerWidth >= 600;
   if (idxOpts.endLabels_) idxOpts.layout = { padding: { right: 100 } };
   idxOpts.plugins.tooltip.callbacks = {
@@ -336,6 +362,7 @@ function render() {
   box.innerHTML = METRICS.map(m => `<section class="card"><h2>${m.label}</h2><div class="chart small"><canvas></canvas></div></section>`).join("");
   METRICS.forEach((m, j) => {
     const opts = baseOptions(v => compact.format(v));
+    opts.scales.y.beginAtZero = true;
     opts.plugins.tooltip.callbacks = {
       title: items => `${commitLabel(commits[items[0].dataIndex])} · ${fmtDate(xs[items[0].dataIndex])}`,
       label: item => `${full.format(item.raw.y)}  (${(100 * item.raw.y / first[m.key]).toFixed(1)}% of original)`,
@@ -349,31 +376,49 @@ function render() {
     }));
   });
 
-  // Per-commit change in lines
-  const deltas = commits.slice(1).map((c, i) => ({ c, d: c.lines - commits[i].lines }));
+  // Per-commit change in lines, for the commits that change src/. Horizontal on narrow screens.
+  const deltas = commits.slice(1).map((c, i) => ({ c, d: c.lines - commits[i].lines })).filter(x => x.d);
+  const horizontal = innerWidth < 600;
+  const [cat, val] = horizontal ? ["y", "x"] : ["x", "y"];
   const dOpts = baseOptions(v => signed(v));
-  dOpts.scales.x = { type: "category", grid: { display: false }, border: { color: css("--grid") },
-                     ticks: { color: css("--text-muted"), maxTicksLimit: 12, maxRotation: 0 } };
+  dOpts.indexAxis = cat;
   dOpts.events_ = [];
-  dOpts.interaction = { mode: "index", intersect: false };
+  dOpts.interaction = { mode: "index", axis: cat, intersect: false };
+  dOpts.scales = {
+    [cat]: { type: "category", grid: { display: false }, border: { color: css("--grid") },
+             ticks: { color: css("--text-muted"), autoSkip: false, maxRotation: 0 } },
+    [val]: { grid: { color: css("--grid") }, border: { display: false }, grace: "15%",
+             ticks: { color: css("--text-muted"), maxTicksLimit: horizontal ? 4 : 6, callback: v => signed(v) } },
+  };
+  // Room for the value labels; no positive range for additions too small to see.
+  const range = Math.max(...deltas.map(x => Math.abs(x.d)));
+  if (Math.max(0, ...deltas.map(x => x.d)) < range / 20) dOpts.scales[val].max = 0;
+  // Horizontal labels sit beside the bar end and need more room than the grace gives.
+  if (horizontal && Math.min(...deltas.map(x => x.d)) < 0) {
+    dOpts.scales[val].min = -range * 1.4;
+    dOpts.scales[val].ticks.callback = (v, i) => (i === 0 ? "" : signed(v));  // that edge is not a round value
+  }
+  dOpts.layout = { padding: horizontal ? { right: 36 } : { top: 16 } };
   dOpts.plugins.tooltip.callbacks = {
     title: items => `${commitLabel(deltas[items[0].dataIndex].c)} · ${fmtDate(deltas[items[0].dataIndex].c.date)}`,
     label: item => `${signed(item.raw, v => full.format(v))} lines`,
     afterBody: items => deltas[items[0].dataIndex].c.subject,
   };
   dOpts.onClick = (e, els) => { if (els.length) window.open(commitUrl(deltas[els[0].index].c), "_blank"); };
+  const deltaBox = document.getElementById("chart-delta").parentElement;
+  deltaBox.style.height = horizontal ? 40 + 26 * deltas.length + "px" : "";
   charts.push(new Chart(document.getElementById("chart-delta"), {
     type: "bar",
     data: {
       labels: deltas.map(x => commitLabel(x.c)),
       datasets: [{
-        data: deltas.map(x => x.d || null),
+        data: deltas.map(x => x.d),
         backgroundColor: deltas.map(x => css(x.d > 0 ? "--up" : "--down")),
-        borderRadius: 4, borderSkipped: "start", minBarLength: 2,
-        maxBarThickness: 18, categoryPercentage: 0.9, barPercentage: 0.85,
+        borderRadius: 4, borderSkipped: "start", minBarLength: 2, clip: false,
+        maxBarThickness: horizontal ? 16 : 24, categoryPercentage: 0.9, barPercentage: 0.85,
       }],
     },
-    options: dOpts,
+    options: dOpts, plugins: [tipLabels],
   }));
 
   // Table
