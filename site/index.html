@@ -584,7 +584,7 @@ function showPolled() {
     .then(d => {
       const late = !d.scheduled || Date.now() - Date.parse(d.scheduled) > 30 * 60e3;
       document.getElementById("polled").innerHTML = `polled every 15 min, last at <time datetime="${escapeHtml(d.polled)}">${fmtDate(d.polled)}</time>` +
-        (late ? ' <span class="delayed">⚠ polling delayed</span>' : "");
+        (late ? ' <span class="delayed">⚠ polling currently not working</span>' : "");
     })
     .catch(() => {});
 }
