@@ -196,7 +196,9 @@ const METRICS = [
   { key: "imports", label: "Import statements", color: "--m-imports", sub: c => `${(c.imports / c.files).toFixed(1)} per file` },
 ];
 const compact = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 2 });
-const full = new Intl.NumberFormat("en");
+// Thousands separated by a (narrow, non-breaking) space: 13 294 360.
+const grouped = new Intl.NumberFormat("en");
+const full = { format: v => grouped.format(v).replace(/,/g, "\u202f") };
 const fmtBytes = v => (v >= 1e9 ? (v / 1e9).toFixed(2) + " GB" : (v / 1e6).toFixed(1) + " MB");
 // All times in UTC.
 const TZ = "UTC", DAY = 864e5;
