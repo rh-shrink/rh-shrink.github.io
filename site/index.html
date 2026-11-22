@@ -123,6 +123,8 @@ th:first-child, td:first-child { position: sticky; left: 0; background: var(--su
 .pair .note { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
 .matrix { display: block; width: 100%; aspect-ratio: 1; -webkit-tap-highlight-color: transparent; }
 .hint { font-size: 12px; color: var(--text-muted); margin: -4px 0 10px; }
+.scale { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); margin: -2px 0 14px; }
+.scale i { width: 160px; height: 10px; border-radius: 2px; flex: none; }
 .legend i.tint { background: var(--m-lines-tint) !important; height: 10px; border-radius: 3px; }
 .legend i.solid { height: 10px; border-radius: 3px; }
 .method { font-size: 14px; color: var(--text-secondary); }
@@ -191,7 +193,9 @@ footer {
 
   <section class="card graph-card" id="g-matrix" hidden>
     <h2>Imports between modules</h2>
-    <p class="hint">A dot: modules of that row import modules of that column, darker for more imports per pair of modules. Modules in path order; lines between the top-level folders.</p>
+    <p class="hint">Each picture is the project's modules in path order, along both sides, grouped by top-level folder (dotted lines). A cell holds 1/160 of the modules each way and is coloured when modules of its row import modules of its column; the darker, the more imports per pair of modules in the cell:</p>
+    <div class="scale"></div>
+    <p class="hint">A well-structured project probably shows dark squares along the diagonal (folders importing mostly from themselves), some vertical stripes (modules that much builds on) and little else; dots spread over the whole picture are imports between unrelated parts. A cell of the RH proof holds about 300 times more pairs of modules than one of Mathlib, so compare the patterns rather than the darkness.</p>
     <div class="pair"></div>
   </section>
   <section class="card graph-card" id="g-profile" hidden>
@@ -781,6 +785,11 @@ function renderGraph() {
   const density = (g, v) => v / (g.modules / g.matrix.bins) ** 2;
   const ds = sides.flatMap(([, g]) => g.matrix.cells.map(c => density(g, c[2])));
   const range = [Math.log(Math.min(...ds)), Math.log(Math.max(...ds))];
+  // the colour scale: from the lightest to the darkest cell, as in drawMatrix
+  const per = d => `1 import per ${compact.format(Math.round(1 / d))} pairs`;
+  const mix = a => `color-mix(in srgb, ${blue} ${Math.round(100 * a)}%, ${css("--surface-0")})`;
+  document.querySelector("#g-matrix .scale").innerHTML =
+    `<span>${per(Math.exp(range[0]))}</span><i style="background:linear-gradient(90deg, ${mix(0.15)}, ${mix(1)})"></i><span>${per(Math.exp(range[1]))}</span>`;
   const box = document.getElementById("g-matrix");
   box.hidden = false;
   const matrices = box.querySelector(".pair");
