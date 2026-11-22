@@ -207,7 +207,7 @@ let commits = [], charts = [];
 // box is a link to the commit. A click anywhere else closes it.
 const tip = document.getElementById("tip");
 const touch = matchMedia("(hover: none)").matches;
-let pinned = null;  // { chart, x } of the pinned popup
+let pinned = null;  // { chart, els } of the pinned popup
 
 // Line charts may fill with a gradient: then the swatch takes the line color.
 const swatch = c => (typeof c.backgroundColor === "string" ? c.backgroundColor : c.borderColor);
@@ -273,7 +273,8 @@ function pinTip(e, els, chart) {
   chart.tooltip.setActiveElements(els, { x: e.x, y: e.y });
   chart.update("none");  // draws the popup of the clicked point through showTip
   if (tip.hidden) return;
-  pinned = { chart, x: els[0].element.x };
+  pinned = { chart, els };
+  chart.draw();  // the enlarged dots of the pinned commit
   tip.classList.add("pinned");
   if (tip.getBoundingClientRect().top < 0) scrollBy({ top: tip.getBoundingClientRect().top - 8, behavior: "smooth" });
   tip.querySelector(".open").textContent = `Open ${commitLabel(commitAt(chart, els[0].index))} on GitHub ↗`;
@@ -293,17 +294,17 @@ document.addEventListener("click", e => {
 document.addEventListener("keydown", e => { if (e.key === "Escape") unpin(); });
 tip.addEventListener("click", () => setTimeout(unpin));
 
-// Vertical crosshair at the hovered (or pinned) commit.
+// The pinned commit keeps the enlarged dot that hovering gives it.
 const overlay = {
   id: "overlay",
   afterDatasetsDraw(chart) {
-    const { ctx, chartArea: a } = chart;
+    if (pinned?.chart !== chart || chart.config.type !== "line") return;
+    const { ctx } = chart;
     ctx.save();
-    const act = chart.tooltip?.getActiveElements?.() || [];
-    if ((pinned?.chart === chart || act.length) && chart.config.type === "line") {
-      const px = pinned?.chart === chart ? pinned.x : act[0].element.x;
-      ctx.strokeStyle = css("--text-muted"); ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke();
+    for (const { datasetIndex, element } of pinned.els) {
+      ctx.beginPath(); ctx.arc(element.x, element.y, 5, 0, 2 * Math.PI);
+      ctx.fillStyle = chart.data.datasets[datasetIndex].borderColor; ctx.fill();
+      ctx.strokeStyle = css("--surface-1"); ctx.lineWidth = 2; ctx.stroke();
     }
     ctx.restore();
   },
