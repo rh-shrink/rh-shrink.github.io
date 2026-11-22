@@ -233,6 +233,36 @@ function showTip({ chart, tooltip }) {
   tip.style.left = x + "px"; tip.style.top = y + "px";
 }
 
+// Popups only near the drawn marks: within NEAR px of a line (as drawn, with its steps) or of a
+// bar. On a line, a horizontal stretch belongs to the commit that set that value, and the step
+// up or down to the commit that changed it. Returns all datasets at that commit.
+const NEAR = touch ? 24 : 10;
+const distToBox = (px, py, x1, y1, x2, y2) => Math.hypot(
+  px - Math.max(Math.min(x1, x2), Math.min(px, Math.max(x1, x2))),
+  py - Math.max(Math.min(y1, y2), Math.min(py, Math.max(y1, y2))));
+Chart.Interaction.modes.nearLine = (chart, e) => {
+  let best = { d: Infinity, i: -1 };
+  const consider = (d, i) => { if (d < best.d) best = { d, i }; };
+  chart.data.datasets.forEach((ds, k) => {
+    const pts = chart.getDatasetMeta(k).data;
+    pts.forEach((p, i) => {
+      if (chart.config.type === "bar") {
+        const { x, y, base, width, height } = p.getProps(["x", "y", "base", "width", "height"]);
+        if (chart.options.indexAxis === "y") consider(distToBox(e.x, e.y, x, y - height / 2, base, y + height / 2), i);
+        else consider(distToBox(e.x, e.y, x - width / 2, y, x + width / 2, base), i);
+      } else if (i === 0) {
+        consider(Math.hypot(e.x - p.x, e.y - p.y), 0);
+      } else {
+        const q = pts[i - 1];
+        consider(distToBox(e.x, e.y, q.x, q.y, p.x, q.y), i - 1);  // flat stretch: previous commit
+        consider(distToBox(e.x, e.y, p.x, q.y, p.x, p.y), i);      // step: this commit
+      }
+    });
+  });
+  if (best.d > NEAR) return [];
+  return chart.data.datasets.map((ds, k) => ({ element: chart.getDatasetMeta(k).data[best.i], datasetIndex: k, index: best.i }));
+};
+
 // The commit behind data index i; the bar chart sets its own lookup (not in options: Chart.js
 // would call a function there as a scriptable option).
 const commitAt = (chart, i) => (chart.$commitAt ? chart.$commitAt(i) : commits[i]);
@@ -338,7 +368,8 @@ function baseOptions(yTicks) {
     maintainAspectRatio: false, animation: false,
     // Touch: popups only from taps, so scrolling over a chart shows none.
     events: touch ? ["click"] : ["mousemove", "mouseout", "click"],
-    interaction: { mode: "index", intersect: false },
+    interaction: { mode: "nearLine" },
+    onHover: (e, els, chart) => { chart.canvas.style.cursor = els.length ? "pointer" : ""; },
     scales: {
       x: { type: "linear", min: xs[0], max: xs[xs.length - 1], grid: { display: false }, border: { color: grid },
            afterBuildTicks: timeTicks, ticks: { color: muted, maxRotation: 0, callback: v => fmtTick(v) } },
@@ -454,7 +485,7 @@ function render() {
   const dOpts = baseOptions(v => signed(v));
   dOpts.indexAxis = cat;
   dOpts.events_ = [];
-  dOpts.interaction = { mode: "index", axis: cat, intersect: false };
+  dOpts.interaction = { mode: "nearLine" };
   dOpts.scales = {
     [cat]: { type: "category", grid: { display: false }, border: { color: css("--grid") },
              ticks: { color: css("--text-muted"), autoSkip: false, maxRotation: 0 } },
