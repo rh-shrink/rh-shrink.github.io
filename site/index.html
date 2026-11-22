@@ -95,6 +95,7 @@ h2 { font-size: 14px; font-weight: 600; margin: 0 0 10px; color: var(--text-seco
 .chart { position: relative; height: 320px; }
 .chart canvas { -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; }
 .chart.small { height: 200px; }
+.chart.tall { height: 300px; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0; }
 details { margin-top: 12px; }
 summary { cursor: pointer; color: var(--text-secondary); font-size: 14px; font-weight: 600; }
@@ -713,23 +714,25 @@ function renderGraph() {
     card.hidden = false;
     const box = card.querySelector(".pair");
     box.classList.toggle("three", sides.length === 3);
-    box.innerHTML = sides.map(([label, g]) => `<figure><figcaption>${label}</figcaption><div class="chart small"><canvas></canvas></div><div class="note">${note(g)}</div></figure>`).join("");
+    box.innerHTML = sides.map(([label, g]) => `<figure><figcaption>${label}</figcaption><div class="chart tall"><canvas></canvas></div><div class="note">${note(g)}</div></figure>`).join("");
     return [...box.querySelectorAll("canvas")];
   };
-  const lineOpts = (x, y, title, label) => ({
-    maintainAspectRatio: false, animation: false, devicePixelRatio: sharpness(),
+  // Lying charts: the index (depth, rank) runs down the y axis, the value along the x axis.
+  const lineOpts = (index, value, title, label) => ({
+    maintainAspectRatio: false, animation: false, devicePixelRatio: sharpness(), indexAxis: "y",
     events: touch ? ["click"] : ["mousemove", "mouseout", "click"],
-    interaction: { mode: "nearest", axis: "x", intersect: false },
+    interaction: { mode: "nearest", axis: "y", intersect: false },
     scales: {
-      x: { type: "linear", ...x, border: { color: grid }, grid: { display: false },
-           ticks: { color: muted, maxRotation: 0, maxTicksLimit: 5, ...(x.ticks || {}) } },
-      y: { ...y, grid: { color: grid }, border: { display: false },
-           ticks: { color: muted, maxTicksLimit: 6, ...(y.ticks || {}) } },
+      y: { type: "linear", ...index, border: { color: grid }, grid: { display: false },
+           ticks: { color: muted, maxTicksLimit: 6, ...(index.ticks || {}) } },
+      x: { ...value, grid: { color: grid }, border: { display: false },
+           ticks: { color: muted, maxRotation: 0, maxTicksLimit: 5, ...(value.ticks || {}) } },
     },
     plugins: { legend: { display: false }, tooltip: { enabled: false, external: chartTip, callbacks: { title, label } } },
   });
-  const area = data => ({
-    data, borderColor: blue, backgroundColor: blue + "33", fill: "start", borderWidth: 1.5,
+  // filled to the start of the value axis (a value: "start" fills the wrong way on lying charts)
+  const area = (data, start) => ({
+    data, borderColor: blue, backgroundColor: blue + "33", fill: { target: { value: start } }, borderWidth: 1.5, clip: 4,
     pointRadius: 0, pointHoverRadius: 4, pointHoverBackgroundColor: blue, pointHoverBorderWidth: 0,
   });
 
@@ -744,10 +747,11 @@ function renderGraph() {
       const g = sides[k][1];
       graphCharts.push(new Chart(canvas, {
         type: "line",
-        data: { datasets: [{ ...area(g.profile.map((v, d) => ({ x: d, y: 100 * v / g.modules, n: v }))), stepped: "middle" }] },
+        // depth 0, the modules everything builds on, at the bottom
+        data: { datasets: [area(g.profile.map((v, d) => ({ y: d, x: 100 * v / g.modules, n: v })), 0)] },
         options: lineOpts({ min: 0, max: depthMax, title: { display: true, text: "import depth", color: muted } },
-          { min: 0, max: shareMax, ticks: { callback: v => v + "%" } },
-          items => `Import depth ${items[0].raw.x}`, item => `${full.format(item.raw.n)} modules (${pct(item.raw.n, g.modules)})`),
+          { min: 0, max: shareMax, title: { display: true, text: "share of the modules", color: muted }, ticks: { callback: v => v + "%" } },
+          items => `Import depth ${items[0].raw.y}`, item => `${full.format(item.raw.n)} modules (${pct(item.raw.n, g.modules)})`),
       }));
     });
 
@@ -758,13 +762,14 @@ function renderGraph() {
   pair("g-reach", g => `on average ${pct(g.reach.mean, g.modules)} of the modules`)
     .forEach((canvas, k) => {
       const g = sides[k][1], rc = g.reach;
-      const pts = rc.rank.map((r, i) => ({ x: 100 * r / g.modules, y: rc.count[i] ? 100 * rc.count[i] / g.modules : null, name: rc.name[i], n: rc.count[i] }));
+      const pts = rc.rank.map((r, i) => ({ y: 100 * r / g.modules, x: rc.count[i] ? 100 * rc.count[i] / g.modules : null, name: rc.name[i], n: rc.count[i] }));
       graphCharts.push(new Chart(canvas, {
         type: "line",
-        data: { datasets: [{ ...area(pts), spanGaps: false }] },
-        options: lineOpts({ min: 0, max: 100, title: { display: true, text: "modules, most imported first", color: muted },
+        data: { datasets: [{ ...area(pts, floor), spanGaps: false }] },
+        // the most imported module at the top
+        options: lineOpts({ min: 0, max: 100, reverse: true, title: { display: true, text: "modules, most imported first", color: muted },
                             ticks: { callback: v => v + "%" } },
-          { type: "logarithmic", min: floor, max: 100,
+          { type: "logarithmic", min: floor, max: 100, title: { display: true, text: "modules rebuilt", color: muted },
             ticks: { callback: v => (Number.isInteger(Math.log10(v)) ? (v >= 1 ? v : v.toPrecision(1)) + "%" : "") } },
           items => items[0].raw.name,
           item => `${full.format(item.raw.n)} modules rebuilt (${pct(item.raw.n, g.modules)})`),
