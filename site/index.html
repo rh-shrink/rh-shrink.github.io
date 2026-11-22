@@ -393,8 +393,11 @@ function lineDataset(m, values, fill) {
   const color = css(m.color);
   return {
     label: m.label, data: values, borderColor: color, backgroundColor: color, borderWidth: 2,
-    stepped: "before", pointRadius: 0, pointHoverRadius: 5,
-    pointHoverBorderColor: css("--surface-1"), pointHoverBorderWidth: 2, pointStyle: "rectRounded",
+    // A dot at every commit, also where the numbers do not change.
+    stepped: "before", pointRadius: 2.5, pointHoverRadius: 5, pointStyle: "circle",
+    pointBackgroundColor: color, pointBorderColor: css("--surface-1"), pointBorderWidth: 1,
+    pointHoverBorderColor: css("--surface-1"), pointHoverBorderWidth: 2,
+    clip: 6,  // whole dots at the chart edges
     fill: fill ? { target: "start" } : false,
     ...(fill ? { backgroundColor: ctx => gradient(ctx, color) } : {}),
   };
