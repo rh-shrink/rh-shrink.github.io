@@ -173,6 +173,7 @@ footer {
       <dt>Code lines</dt><dd>total lines, without blank lines and lines that are only comments (<code>--</code>, nested <code>/- -/</code>)</dd>
       <dt>Theorems</dt><dd>lines starting with <code>theorem</code> or <code>lemma</code>, also after attributes and modifiers such as <code>@[simp] private</code></dd>
       <dt>Declarations</dt><dd>theorems, and lines starting with <code>def</code>, <code>abbrev</code>, <code>instance</code>, <code>structure</code>, <code>inductive</code>, <code>class</code>, <code>opaque</code> or <code>axiom</code>, likewise</dd>
+      <dt>Other declarations</dt><dd>the declarations that are not theorems</dd>
       <dt>Files</dt><dd><code>.lean</code> files under <code>src/</code></dd>
       <dt>Import statements</dt><dd><code>import</code> statements (also <code>public import</code>, <code>meta import</code>), counted as lines starting with one, assuming the usual one import per line</dd>
     </dl>
@@ -189,12 +190,14 @@ footer {
 <script>
 const REPO = "https://github.com/leanprover-community/riemann-hypothesis";
 const METRICS = [
+  // Own charts: "Lines" also shows the total lines (in gray, beneath the code lines), and the
+  // declarations chart shows them split into the theorems (gray) and the others.
   { key: "code",    label: "Code lines",   color: "--m-lines",   sub: c => `${Math.round(c.code / c.files)} per file`,
-    // Its own chart (titled "Lines") also shows the total lines, in gray; not in the chart relative
-    // to the original. Likewise the declarations chart shows the theorems.
-    title: "Lines", also: { key: "lines", label: "Total lines", color: "--m-extra" } },
+    title: "Lines", series: [{ key: "code", label: "Code lines", color: "--m-lines" },
+                             { key: "lines", label: "Total lines", color: "--m-extra" }] },
   { key: "decls",   label: "Declarations", color: "--m-decls",
-    also: { key: "theorems", label: "Theorems", color: "--m-extra" } },
+    series: [{ key: "defs", label: "Other declarations", color: "--m-decls" },
+             { key: "theorems", label: "Theorems", color: "--m-extra" }] },
   { key: "files",   label: "Files",        color: "--m-files",   sub: c => fmtBytes(c.bytes) },
   { key: "imports", label: "Import statements", color: "--m-imports", sub: c => `${(c.imports / c.files).toFixed(1)} per file` },
 ];
@@ -515,16 +518,16 @@ function render() {
   const box = document.getElementById("multiples");
   const key = m => `<span><i style="background:${css(m.color)}"></i>${m.label}</span>`;
   box.innerHTML = METRICS.map(m => `<section class="card"><h2>${m.title || m.label}</h2>` +
-    (m.also ? `<div class="legend">${key(m)}${key(m.also)}</div>` : "") +
+    (m.series ? `<div class="legend">${m.series.map(key).join("")}</div>` : "") +
     `<div class="chart small"><canvas></canvas></div></section>`).join("");
   METRICS.forEach((m, j) => {
     const opts = baseOptions(v => compact.format(v));
     opts.scales.y.beginAtZero = true;
-    const series = m.also ? [m, m.also] : [m];
+    const series = m.series || [m];
     opts.plugins.tooltip.callbacks = {
       label: item => {
         const s = series[item.datasetIndex];
-        return `${m.also ? s.label + ": " : ""}${full.format(item.raw.y)}  (${(100 * item.raw.y / first[s.key]).toFixed(1)}% of original)`;
+        return `${m.series ? s.label + ": " : ""}${full.format(item.raw.y)}  (${(100 * item.raw.y / first[s.key]).toFixed(1)}% of original)`;
       },
       afterLabel: item => (item.datasetIndex === 0 && m.sub ? m.sub(commits[item.dataIndex]) : ""),
       afterBody: items => commits[items[0].dataIndex].subject,
