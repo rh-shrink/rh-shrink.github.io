@@ -85,7 +85,7 @@ code { font-size: 0.92em; }
 .hero { display: flex; flex-direction: column; justify-content: center; }
 .hero .value { font-size: 56px; font-weight: 650; line-height: 1; letter-spacing: -0.02em; }
 .hero .label { color: var(--text-secondary); margin-top: 8px; }
-.hero .star { color: var(--text-muted); font-size: 12px; margin-top: 6px; }
+.hero .star, .tile .star { color: var(--text-muted); font-size: 12px; margin-top: 6px; }
 .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .tile .label { color: var(--text-secondary); font-size: 13px; display: flex; align-items: center; gap: 6px; }
 .swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
@@ -181,7 +181,7 @@ footer {
     <section class="card hero">
       <span class="value" id="hero"></span>
       <span class="label">of the original code lines* left</span>
-      <span class="star">* without imports<br>** only imports of the project's own modules</span>
+      <span class="star">* without imports</span>
     </section>
     <section class="tiles" id="tiles"></section>
   </div>
@@ -282,7 +282,7 @@ const METRICS = [
     series: [{ key: "defs", label: "Other declarations", color: "--m-decls" },
              { key: "theorems", label: "Theorems", color: "--m-extra" }] },
   { key: "files",   label: "Files",        color: "--m-files",   sub: c => fmtBytes(c.bytes) },
-  { key: "imports", label: "Import statements**", color: "--m-imports", sub: c => `${(c.imports / c.files).toFixed(1)} per file` },
+  { key: "imports", label: "Import statements**", note: "** only imports of the project's own modules", color: "--m-imports", sub: c => `${(c.imports / c.files).toFixed(1)} per file` },
 ];
 // Small charts of signs of mess, after those of the METRICS (not in the chart relative to the
 // original, not in the tiles); compared with Mathlib in their own card.
@@ -579,16 +579,16 @@ function render() {
   document.getElementById("updated").innerHTML = ` · last commit <time datetime="${last.date}">${fmtDate(last.date)}</time>`;
 
   // Tiles: the current value, and the change from the original.
-  const tile = (label, color, key, fmt = compact.format, unit = "") => {
+  const tile = (label, color, key, note = "", fmt = compact.format, unit = "") => {
     const now = last[key], orig = first[key], d = now - orig;
     const change = d === 0 ? "unchanged"
       : `<span class="arrow">${d < 0 ? "↓" : "↑"}</span> ${Math.abs(100 * d / orig).toFixed(1)}%, <span class="nowrap">originally ${fmt(orig)}</span>`;
     return `<div class="card tile"><div class="label">${color ? `<i class="swatch" style="background:${css(color)}"></i>` : ""}${label}</div>
       <div class="value" title="${full.format(now)}${unit}">${fmt(now)}</div>
-      <div class="delta" title="${signed(d, v => full.format(v))}${unit}">${change}</div></div>`;
+      <div class="delta" title="${signed(d, v => full.format(v))}${unit}">${change}</div>${note ? `<div class="star">${note}</div>` : ""}</div>`;
   };
   document.getElementById("tiles").innerHTML =
-    METRICS.map(m => tile(m.label, m.color, m.key)).join("") +
+    METRICS.map(m => tile(m.label, m.color, m.key, m.note)).join("") +
     tile("Theorems", "--m-extra", "theorems") +
     tile("Total lines", "--m-extra", "lines");
 
