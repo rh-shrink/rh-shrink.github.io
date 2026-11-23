@@ -231,7 +231,7 @@ footer {
 
   <section class="card" id="c-compare" hidden>
     <h2>Compared with Mathlib</h2>
-    <p class="hint">How many times as frequent as in Mathlib (Mathlib = 1×, the solid line; log scale), originally and now.</p>
+    <p class="hint">How many times as frequent as in Mathlib (Mathlib = 1×, the solid line; log scale), originally and now. Some repeated theorem statements are not real repeats: the same text can mean different things in different namespaces.</p>
     <div class="legend"><span><i class="solid" style="background:var(--m-lines);opacity:.45"></i>Originally</span><span><i class="solid" style="background:var(--m-lines)"></i>Now</span></div>
     <div class="chart compare"><canvas></canvas></div>
   </section>
@@ -255,7 +255,6 @@ footer {
       <dt>Import statements**</dt><dd><code>import</code> statements (also <code>public import</code>, <code>meta import</code>) of the project's own files, counted as lines starting with one, assuming the usual one import per line; imports of Mathlib, Lean and other dependencies are left out</dd>
       <dt>Repeated theorem statements</dt><dd>theorems and lemmas whose statement (from after the name up to <code>:=</code>, white space aside, at least 30 characters) is word for word that of another theorem, counting the copies beyond the first. The same text can mean different things in different namespaces, which is why Mathlib has some too</dd>
       <dt>maxHeartbeats overrides</dt><dd><code>set_option maxHeartbeats</code>, which gives a proof more time than Lean's default</dd>
-      <dt>omega and nlinarith</dt><dd>uses of these two tactics, which settle arithmetic by brute force</dd>
       <dt>Declaration lengths</dt><dd>code lines* from a declaration to the next one in its file, or to the end of the file</dd>
       <dt>Imports between files</dt><dd>in the pictures of the imports and the ideal build: which files of the project the import statements of each file name (imports of Mathlib and other dependencies are left out)</dd>
       <dt>Mathlib</dt><dd>for comparison, the version of Oct 13, 2026 (<a href="https://github.com/leanprover-community/mathlib4/commit/56a005855ea17e0b0958f73ec801ae140b0a1679">56a0058</a>): its files under <code>Mathlib/</code> and the imports between them, measured the same way. Nothing special about this version: it's just one I had lying around</dd>
@@ -908,7 +907,6 @@ function renderCompare() {
   const ROWS = [
     { label: "maxHeartbeats overrides", short: ["heartbeat", "overrides"], value: v => 1e4 * v.heartbeats / v.code, unit: " per 10 000 code lines*" },
     { label: "Repeated theorem statements", short: ["repeated", "statements"], value: v => 100 * v.repeats / v.statements, unit: "% of theorem statements" },
-    { label: "omega and nlinarith", short: ["omega,", "nlinarith"], value: v => 1e4 * v.arith / v.code, unit: " per 10 000 code lines*" },
     { label: "Declarations of 64+ code lines*", short: ["64+ line*", "declarations"], value: v => 100 * sum(v.lengths.slice(lengthEdges.indexOf(64))) / sum(v.lengths), unit: "% of declarations" },
   ];
   const fmt = v => (v >= 10 ? v.toFixed(0) : v >= 1 ? v.toFixed(1) : v.toPrecision(2));
