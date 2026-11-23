@@ -9,8 +9,8 @@ Writes, for the first first-parent commit ("original") and the last one ("now"):
 - build: an ideal build on as many cores as needed, each module starting as soon as the modules
   it imports are built and taking time proportional to its code lines (an assumption: real
   build times depend mostly on the proofs): the total work, the shortest possible build (span),
-  the number of modules building at each of SAMPLES moments, and the module of the longest
-  import chain building then.
+  the number of modules building at each of SAMPLES moments, and the module of the import
+  chain with the most code lines building then.
 Only imports of modules of the project count (not Mathlib and other dependencies).
 
 With --reuse, the "original" of OLD.json is taken over when it is of this VERSION and commit (it
@@ -126,7 +126,8 @@ def summary(names, imports, cost):
     moments = (np.arange(SAMPLES) + 0.5) / SAMPLES * span
     running = (np.searchsorted(np.sort(start), moments, "right")
                - np.searchsorted(np.sort(end), moments, "right"))
-    # the longest import chain, from its last module back: each one's latest-ending import
+    # the import chain with the most code lines, from its last module back: each one's
+    # latest-ending import
     chain = [int(np.argmax(end))]
     while imports[chain[-1]]:
         chain.append(max(imports[chain[-1]], key=lambda j: end[j]))
