@@ -23,7 +23,8 @@ import threading
 # 2: declarations and imports inside comments are not counted; code lines per folder.
 # 3: heartbeat overrides, omega/nlinarith, declaration lengths, repeated theorem statements.
 # 4: finer declaration lengths.
-VERSION = 4
+# 5: code lines without the file header (imports, module, prelude).
+VERSION = 5
 STAT_KEYS = ("bytes", "lines", "code", "theorems", "defs", "imports", "heartbeats", "arith",
              "statements")
 # Declaration lengths in code lines: bin k holds LENGTH_EDGES[k] up to the next edge (exclusive);
@@ -108,6 +109,14 @@ def header(text: bytes) -> bytes:
         k *= 8
 
 
+def code_lines(code: bytes) -> int:
+    """The lines of code (comments blanked out) with something but white space, without the
+    header (imports, module, prelude); translate and split run in C."""
+    end = NOT_HEADER.search(code)
+    parts = code[end.start():].translate(None, b" \t\r\f\v").split(b"\n") if end else []
+    return len(parts) - parts.count(b"")
+
+
 def statement(code: bytes, pos: int):
     """The statement of the theorem whose name ends at pos: up to ":=", white space normalised;
     None if not found within 3000 bytes or shorter than SHORTEST_STATEMENT."""
@@ -124,8 +133,6 @@ def blob_stats(text: bytes):
     code = without_comments(text)
     decls = list(DECL.finditer(code))
     kinds = [m.group(1) for m in decls]
-    # code lines: the lines with something but white space (translate and split run in C)
-    parts = code.translate(None, b" \t\r\f\v").split(b"\n")
     end = NOT_HEADER.search(code)
     theorems = sum(k in (b"theorem", b"lemma") for k in kinds)
     # each declaration's code lines: from its line (DECL matches at a line start) to the next
@@ -143,7 +150,7 @@ def blob_stats(text: bytes):
     counts = [
         len(text),
         lines,
-        len(parts) - parts.count(b""),
+        code_lines(code),
         theorems,
         len(kinds) - theorems,
         len(IMPORT.findall(code, 0, end.start() if end else len(code))),

@@ -179,7 +179,7 @@ footer {
   <div class="top">
     <section class="card hero">
       <span class="value" id="hero"></span>
-      <span class="label">of the original code lines left</span>
+      <span class="label">of the original code lines* left</span>
     </section>
     <section class="tiles" id="tiles"></section>
   </div>
@@ -244,13 +244,13 @@ footer {
     commit, not as the commits it contains. A GitHub Action checks for new commits every 15 minutes.</p>
     <dl>
       <dt>Total lines</dt><dd>lines of the <code>.lean</code> files under <code>src/</code>, including blank lines and comments</dd>
-      <dt>Code lines</dt><dd>total lines, without blank lines and lines that are only comments (<code>--</code>, nested <code>/- -/</code>)</dd>
+      <dt>Code lines*</dt><dd>total lines, without blank lines, lines that are only comments (<code>--</code>, nested <code>/- -/</code>) and the imports at the top of each file (with its <code>module</code> line)</dd>
       <dt>Theorems</dt><dd>code lines starting with <code>theorem</code> or <code>lemma</code>, also after attributes and modifiers such as <code>@[simp] private</code></dd>
       <dt>Other declarations</dt><dd>code lines starting with <code>def</code>, <code>abbrev</code>, <code>instance</code>, <code>structure</code>, <code>inductive</code>, <code>class</code>, <code>opaque</code> or <code>axiom</code>, likewise</dd>
       <dt>Declarations</dt><dd>theorems and other declarations</dd>
       <dt>Files</dt><dd><code>.lean</code> files under <code>src/</code></dd>
       <dt>Folders</dt><dd>the folders directly in <code>src/</code>, each with everything below it; the files directly in <code>src/</code> are one more group</dd>
-      <dt>Import statements</dt><dd><code>import</code> statements (also <code>public import</code>, <code>meta import</code>), counted as code lines starting with one, assuming the usual one import per line</dd>
+      <dt>Import statements</dt><dd><code>import</code> statements (also <code>public import</code>, <code>meta import</code>), counted as lines starting with one, assuming the usual one import per line</dd>
       <dt>Repeated theorem statements</dt><dd>theorems and lemmas whose statement (from after the name up to <code>:=</code>, white space aside, at least 30 characters) is word for word that of another theorem, counting the copies beyond the first. The same text can mean different things in different namespaces, which is why Mathlib has some too</dd>
       <dt>maxHeartbeats overrides</dt><dd><code>set_option maxHeartbeats</code>, which gives a proof more time than Lean's default</dd>
       <dt>omega and nlinarith</dt><dd>uses of these two tactics, which settle arithmetic by brute force</dd>
@@ -586,7 +586,7 @@ function render() {
       <div class="delta" title="${signed(d, v => full.format(v))}${unit}">${change}</div></div>`;
   };
   document.getElementById("tiles").innerHTML =
-    METRICS.map(m => tile(m.label, m.color, m.key)).join("") +
+    METRICS.map(m => tile(m.key === "code" ? m.label + "*" : m.label, m.color, m.key)).join("") +
     tile("Theorems", "--m-extra", "theorems") +
     tile("Total lines", "--m-extra", "lines");
 

@@ -26,11 +26,11 @@ import time
 
 import numpy as np
 
-from collect import blob_stats, git, header, lean_blobs, read_blobs, summary as text_summary, without_comments
+from collect import blob_stats, code_lines, git, header, lean_blobs, read_blobs, summary as text_summary, without_comments
 
 IMPORT_LINE = re.compile(
     rb"^(?:public[ \t]+)?(?:meta[ \t]+)?import[ \t]+(?:all[ \t]+)?([^\n]*)", re.M)
-VERSION = 5  # of the output; the workflow computes it again when this changes
+VERSION = 6  # of the output; the workflow computes it again when this changes
 BINS = 160
 SAMPLES = 300
 
@@ -55,8 +55,7 @@ def modules(repo, sha, prefix, package=""):
     texts = dict(read_blobs(repo, sorted(set(blobs))))
     lines = {}
     for b, text in texts.items():
-        parts = without_comments(text).translate(None, b" \t\r\f\v").split(b"\n")
-        lines[b] = len(parts) - parts.count(b"")
+        lines[b] = code_lines(without_comments(text))
     imports = []
     for b in blobs:
         found = set()
