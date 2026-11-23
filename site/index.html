@@ -200,19 +200,19 @@ footer {
   </details>
 
   <details class="card">
-    <summary>Code lines added or removed by each commit that changes them</summary>
+    <summary>Code lines* added or removed by each commit that changes them</summary>
     <div class="chart small"><canvas id="chart-delta"></canvas></div>
   </details>
 
   <details class="card" id="folders-card" hidden>
-    <summary>Code lines by folder</summary>
+    <summary>Code lines* by folder</summary>
     <div class="legend"><span><i class="solid" style="background:var(--m-lines)"></i>Now</span><span><i class="tint"></i>Originally</span></div>
     <div class="folders" id="folders"></div>
   </details>
 
   <section class="card graph-card" id="g-build" hidden>
     <h2>Modules that could build at the same time</h2>
-    <p class="hint">An ideal build on as many cores as needed: every module starts as soon as the modules it imports are built, and takes time in proportion to its code lines (a rough assumption).</p>
+    <p class="hint">An ideal build on as many cores as needed: every module starts as soon as the modules it imports are built, and takes time in proportion to its code lines* (a rough assumption).</p>
     <div class="pair"></div>
   </section>
 
@@ -247,8 +247,8 @@ footer {
     <dl>
       <dt>Total lines</dt><dd>lines of the <code>.lean</code> files under <code>src/</code>, including blank lines and comments</dd>
       <dt>Code lines*</dt><dd>total lines, without blank lines, lines that are only comments (<code>--</code>, nested <code>/- -/</code>) and the imports at the top of each file (with its <code>module</code> line)</dd>
-      <dt>Theorems</dt><dd>code lines starting with <code>theorem</code> or <code>lemma</code>, also after attributes and modifiers such as <code>@[simp] private</code></dd>
-      <dt>Other declarations</dt><dd>code lines starting with <code>def</code>, <code>abbrev</code>, <code>instance</code>, <code>structure</code>, <code>inductive</code>, <code>class</code>, <code>opaque</code> or <code>axiom</code>, likewise</dd>
+      <dt>Theorems</dt><dd>code lines* starting with <code>theorem</code> or <code>lemma</code>, also after attributes and modifiers such as <code>@[simp] private</code></dd>
+      <dt>Other declarations</dt><dd>code lines* starting with <code>def</code>, <code>abbrev</code>, <code>instance</code>, <code>structure</code>, <code>inductive</code>, <code>class</code>, <code>opaque</code> or <code>axiom</code>, likewise</dd>
       <dt>Declarations</dt><dd>theorems and other declarations</dd>
       <dt>Files</dt><dd><code>.lean</code> files under <code>src/</code></dd>
       <dt>Folders</dt><dd>the folders directly in <code>src/</code>, each with everything below it; the files directly in <code>src/</code> are one more group</dd>
@@ -256,10 +256,10 @@ footer {
       <dt>Repeated theorem statements</dt><dd>theorems and lemmas whose statement (from after the name up to <code>:=</code>, white space aside, at least 30 characters) is word for word that of another theorem, counting the copies beyond the first. The same text can mean different things in different namespaces, which is why Mathlib has some too</dd>
       <dt>maxHeartbeats overrides</dt><dd><code>set_option maxHeartbeats</code>, which gives a proof more time than Lean's default</dd>
       <dt>omega and nlinarith</dt><dd>uses of these two tactics, which settle arithmetic by brute force</dd>
-      <dt>Declaration lengths</dt><dd>code lines from a declaration to the next one in its file, or to the end of the file</dd>
+      <dt>Declaration lengths</dt><dd>code lines* from a declaration to the next one in its file, or to the end of the file</dd>
       <dt>Modules, imports</dt><dd>in the pictures of the imports: the <code>.lean</code> files under <code>src/</code>, and the modules of the project their import statements name (imports of Mathlib and other dependencies are left out)</dd>
       <dt>Mathlib</dt><dd>for comparison, the version of Oct 13, 2026 (<a href="https://github.com/leanprover-community/mathlib4/commit/56a005855ea17e0b0958f73ec801ae140b0a1679">56a0058</a>): its modules under <code>Mathlib/</code> and the imports between them, measured the same way</dd>
-      <dt>Ideal build</dt><dd>a simulated build on as many cores as needed: every module starts as soon as all modules it imports are built, and takes time in proportion to its code lines. That is an assumption: how long Lean takes depends mostly on the proofs, which text search cannot tell. The fastest such build takes as long as the longest chain of modules that each import the next, in code lines; all the other modules can be built beside it</dd>
+      <dt>Ideal build</dt><dd>a simulated build on as many cores as needed: every module starts as soon as all modules it imports are built, and takes time in proportion to its code lines*. That is an assumption: how long Lean takes depends mostly on the proofs, which text search cannot tell. The fastest such build takes as long as the longest chain of modules that each import the next, in code lines*; all the other modules can be built beside it</dd>
     </dl>
     <p>Because this is text search, declarations generated by commands or macros are missed.</p>
   </details>
@@ -275,8 +275,8 @@ const REPO = "https://github.com/leanprover-community/riemann-hypothesis";
 const METRICS = [
   // Own charts: "Lines" also shows the total lines (in gray, beneath the code lines), and the
   // declarations chart shows them split into the theorems (gray) and the others.
-  { key: "code",    label: "Code lines",   color: "--m-lines",   sub: c => `${Math.round(c.code / c.files)} per file`,
-    title: "Lines", series: [{ key: "code", label: "Code lines", color: "--m-lines" },
+  { key: "code",    label: "Code lines*",   color: "--m-lines",   sub: c => `${Math.round(c.code / c.files)} per file`,
+    title: "Lines", series: [{ key: "code", label: "Code lines*", color: "--m-lines" },
                              { key: "lines", label: "Total lines", color: "--m-extra" }] },
   { key: "decls",   label: "Declarations", color: "--m-decls",
     series: [{ key: "defs", label: "Other declarations", color: "--m-decls" },
@@ -588,7 +588,7 @@ function render() {
       <div class="delta" title="${signed(d, v => full.format(v))}${unit}">${change}</div></div>`;
   };
   document.getElementById("tiles").innerHTML =
-    METRICS.map(m => tile(m.key === "code" ? m.label + "*" : m.label, m.color, m.key)).join("") +
+    METRICS.map(m => tile(m.label, m.color, m.key)).join("") +
     tile("Theorems", "--m-extra", "theorems") +
     tile("Total lines", "--m-extra", "lines");
 
@@ -697,7 +697,7 @@ function render() {
   }
   dOpts.layout = { padding: horizontal ? { right: 36 } : { top: 16 } };
   dOpts.plugins.tooltip.callbacks = {
-    label: item => `${signed(item.raw, v => full.format(v))} code lines`,
+    label: item => `${signed(item.raw, v => full.format(v))} code lines*`,
     afterBody: items => deltas[items[0].dataIndex].c.subject,
   };
   const deltaBox = document.getElementById("chart-delta").parentElement;
@@ -728,7 +728,7 @@ function render() {
       <td>${full.format(c.decls)}</td><td>${full.format(c.theorems)}</td><td>${full.format(c.files)}</td><td>${full.format(c.imports)}</td></tr>`;
   }).join("");
   document.getElementById("table").innerHTML =
-    `<thead><tr><th>Commit</th><th>Title</th><th>Date</th><th>Code lines</th><th>Δ code lines</th><th>Total lines</th><th>Declarations</th><th>Theorems</th><th>Files</th><th>Import statements</th></tr></thead><tbody>${rows}</tbody>`;
+    `<thead><tr><th>Commit</th><th>Title</th><th>Date</th><th>Code lines*</th><th>Δ code lines*</th><th>Total lines</th><th>Declarations</th><th>Theorems</th><th>Files</th><th>Import statements</th></tr></thead><tbody>${rows}</tbody>`;
 }
 
 // The import graph pictures (graph.json): originally, now and, for comparison, Mathlib
@@ -776,17 +776,17 @@ function renderGraph() {
   const spanMax = Math.max(...sides.map(([, g]) => g.build.span));
   const peak = Math.max(...sides.map(([, g]) => Math.max(...g.build.running)));
   // the work on the longest chain of modules, each importing the next, against all of it
-  pair("g-build", g => `${full.format(Math.round(g.build.work))} code lines in all; the longest chain of modules, each importing the next, has ${full.format(Math.round(g.build.span))} of them`)
+  pair("g-build", g => `${full.format(Math.round(g.build.work))} code lines* in all; the longest chain of modules, each importing the next, has ${full.format(Math.round(g.build.span))} of them`)
     .forEach((canvas, k) => {
       const g = sides[k][1], b = g.build, step = b.span / b.running.length;
       graphCharts.push(new Chart(canvas, {
         type: "line",
         data: { datasets: [{ ...area(b.running.map((v, i) => ({ x: (i + 0.5) * step, y: v || null })), 1), stepped: "middle" }] },
-        options: lineOpts({ min: 0, max: roundUp(spanMax), title: { display: true, text: "time, in code lines built one after another", color: muted },
+        options: lineOpts({ min: 0, max: roundUp(spanMax), title: { display: true, text: "time, in code lines* built one after another", color: muted },
                             ticks: { callback: v => compact.format(v) } },
           { type: "logarithmic", min: 1, max: roundUp(peak),
             ticks: { callback: v => (Number.isInteger(Math.log10(v)) ? compact.format(v) : "") } },
-          items => `After ${compact.format(items[0].raw.x)} code lines (${Math.round(100 * items[0].raw.x / b.span)}% of the build)`,
+          items => `After ${compact.format(items[0].raw.x)} code lines* (${Math.round(100 * items[0].raw.x / b.span)}% of the build)`,
           item => [`${full.format(item.raw.y)} ${item.raw.y === 1 ? "module" : "modules"} building at once`, `on the longest chain: ${b.chain[b.at[item.dataIndex]]}`]),
       }));
     });
@@ -827,10 +827,10 @@ function renderCompare() {
   const sum = a => a.reduce((x, y) => x + y, 0);
   // one column per measure, the names on two lines (short ones on narrow screens)
   const ROWS = [
-    { label: "maxHeartbeats overrides", short: ["heartbeat", "overrides"], value: v => 1e4 * v.heartbeats / v.code, unit: " per 10 000 code lines" },
+    { label: "maxHeartbeats overrides", short: ["heartbeat", "overrides"], value: v => 1e4 * v.heartbeats / v.code, unit: " per 10 000 code lines*" },
     { label: "Repeated theorem statements", short: ["repeated", "statements"], value: v => 100 * v.repeats / v.statements, unit: "% of theorem statements" },
-    { label: "omega and nlinarith", short: ["omega,", "nlinarith"], value: v => 1e4 * v.arith / v.code, unit: " per 10 000 code lines" },
-    { label: "Declarations of 64+ code lines", short: ["64+ line", "declarations"], value: v => 100 * sum(v.lengths.slice(lengthEdges.indexOf(64))) / sum(v.lengths), unit: "% of declarations" },
+    { label: "omega and nlinarith", short: ["omega,", "nlinarith"], value: v => 1e4 * v.arith / v.code, unit: " per 10 000 code lines*" },
+    { label: "Declarations of 64+ code lines*", short: ["64+ line*", "declarations"], value: v => 100 * sum(v.lengths.slice(lengthEdges.indexOf(64))) / sum(v.lengths), unit: "% of declarations" },
   ];
   const fmt = v => (v >= 10 ? v.toFixed(0) : v >= 1 ? v.toFixed(1) : v.toPrecision(2));
   const points = v => ROWS.map((r, i) => ({ x: i, y: r.value(v) / r.value(ml), v: r.value(v), m: r.value(ml), unit: r.unit }));
@@ -887,7 +887,7 @@ function renderCompare() {
   lbox.hidden = false;
   const pair = lbox.querySelector(".pair");
   pair.innerHTML = sides.map(([label, l]) => `<figure><figcaption>${label}</figcaption><div class="chart small"><canvas></canvas></div>` +
-    `<div class="note">${full.format(sum(l))} declarations; the longest bin: ${BINS[l.findLastIndex(x => x > 0)]} code lines</div></figure>`).join("");
+    `<div class="note">${full.format(sum(l))} declarations; the longest bin: ${BINS[l.findLastIndex(x => x > 0)]} code lines*</div></figure>`).join("");
   pair.querySelectorAll("canvas").forEach((canvas, k) => {
     const l = sides[k][1], n = sum(l);
     compareCharts.push(new Chart(canvas, {
@@ -898,14 +898,14 @@ function renderCompare() {
         events: touch ? ["click"] : ["mousemove", "mouseout", "click"],
         interaction: { mode: "index", intersect: false },
         scales: {
-          x: { grid: { display: false }, border: { color: grid }, title: { display: true, text: "code lines per declaration", color: muted },
+          x: { grid: { display: false }, border: { color: grid }, title: { display: true, text: "code lines* per declaration", color: muted },
                // labels only where a bin starts at 1, 8, 64, 512 or 4096 code lines
                ticks: { color: muted, maxRotation: 0, autoSkip: false, callback: (v, i) => ([1, 8, 64, 512, 4096].includes(E[i]) ? String(E[i]) : "") } },
           y: { type: "logarithmic", min: 10 ** Math.floor(Math.log10(least)), max: 100, grid: { color: grid }, border: { display: false },
                ticks: { color: muted, callback: v => (Number.isInteger(Math.log10(v)) ? (v >= 1 ? v : v.toPrecision(1)) + "%" : "") } },
         },
         plugins: { legend: { display: false }, tooltip: { enabled: false, external: chartTip, callbacks: {
-          title: items => `${items[0].label} code lines`,
+          title: items => `${items[0].label} code lines*`,
           label: item => `${full.format(item.dataset.counts[item.dataIndex])} declarations (${(item.raw ?? 0).toPrecision(2)}%)`,
         } } },
       },
