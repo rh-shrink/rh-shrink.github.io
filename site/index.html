@@ -211,7 +211,7 @@ footer {
   </details>
 
   <section class="card graph-card" id="g-build" hidden>
-    <h2>Modules that could build at the same time</h2>
+    <h2>Modules that could theoretically build at the same time</h2>
     <p class="hint">An ideal build on as many cores as needed: every module starts as soon as the modules it imports are built, and takes time in proportion to its code lines* (a rough assumption).</p>
     <div class="pair"></div>
   </section>
@@ -769,7 +769,7 @@ function renderGraph() {
     pointRadius: 0, pointHoverRadius: 4, pointHoverBackgroundColor: blue, pointHoverBorderWidth: 0,
   });
 
-  // Modules that could build at the same time in the ideal build: shared axes, the time in
+  // Modules that could theoretically build at the same time in the ideal build: shared axes, the time in
   // code lines built one after another, the modules on a log axis.
   // a round top: 1, 1.5, 2, 2.5, 3, 4, 5, 6, 8 times a power of ten
   const roundUp = v => { const p = 10 ** Math.floor(Math.log10(v)); return p * [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].find(f => f * p >= v); };
