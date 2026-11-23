@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The import graph of the Lean modules of a commit, for the modularity pictures of the site.
 
-Usage: graph.py REPO OUT.json [--ref main] [--prefix src/] [--package NAME.] [--only]
+Usage: graph.py REPO OUT.json [--ref main] [--prefix src/] [--package NAME.] [--only] [--reuse OLD.json]
 
 Writes, for the first first-parent commit ("original") and the last one ("now"):
 - matrix: imports between modules, the modules in path order (so grouped by folder), counted
@@ -13,7 +13,8 @@ Writes, for the first first-parent commit ("original") and the last one ("now"):
   import chain building then.
 Only imports of modules of the project count (not Mathlib and other dependencies).
 
-With --only, just the commit REF, as "now", together with the counts collect.py makes for the
+With --reuse, the "original" of OLD.json is taken over when it is of this VERSION and commit (it
+never changes). With --only, just the commit REF, as "now", together with the counts collect.py makes for the
 project's commits ("text"; used once for Mathlib, the comparison on the site:
 graph.py MATHLIB site/mathlib.json --ref HEAD --prefix Mathlib/ --package Mathlib. --only).
 """
@@ -173,10 +174,21 @@ def main():
     ap.add_argument("--prefix", default="src/")
     ap.add_argument("--package", default="")
     ap.add_argument("--only", action="store_true")
+    ap.add_argument("--reuse")
     args = ap.parse_args()
     shas = git(args.repo, "log", "--first-parent", "--reverse", "--format=%H", args.ref).decode().split()
     result = {"version": VERSION}
+    old = {}
+    if args.reuse:
+        try:
+            with open(args.reuse) as f:
+                old = json.load(f)
+        except (OSError, ValueError):
+            pass
     for key, sha in (("now", shas[-1]),) if args.only else (("original", shas[0]), ("now", shas[-1])):
+        if key == "original" and old.get("version") == VERSION and old.get("original", {}).get("sha") == sha:
+            result[key] = old["original"]
+            continue
         names, imports, cost = modules(args.repo, sha, args.prefix, args.package)
         result[key] = {"sha": sha, **summary(names, imports, cost)}
         if args.only:

@@ -63,7 +63,8 @@ jobs:
           # commit and of this graph.py VERSION, otherwise computed again below.
           gv=$(sed -n 's/^VERSION = \([0-9]*\).*/\1/p' graph.py)
           # no retries: a missing file is an answer
-          if curl -fs --max-time 30 "https://rh-shrink.github.io/graph.json?t=$RANDOM" -o site/graph.json &&
+          # (kept in $RUNNER_TEMP too: graph.py takes over its "original", which never changes)
+          if curl -fs --max-time 30 "https://rh-shrink.github.io/graph.json?t=$RANDOM" -o site/graph.json && cp site/graph.json "$RUNNER_TEMP/graph-live.json" &&
              python3 -c 'import json, sys; g = json.load(open("site/graph.json")); sys.exit(g.get("version") != int(sys.argv[1]) or g["now"]["sha"] != sys.argv[2])' "$gv" "$head"; then
             graph=current
           else
@@ -87,7 +88,7 @@ jobs:
           eval "$RETRY"
           clone() { rm -rf "$RUNNER_TEMP/source.git"; git clone --quiet --bare --single-branch --branch main "$SOURCE" "$RUNNER_TEMP/source.git"; }
           retry clone
-          python3 collect.py "$RUNNER_TEMP/source.git" site/data.json
+          "$RUNNER_TEMP/venv/bin/python" collect.py "$RUNNER_TEMP/source.git" site/data.json
 
       - name: Commit data
         id: commit
@@ -115,7 +116,7 @@ jobs:
         if: steps.check.outputs.graph == 'stale'
         continue-on-error: true
         run: |
-          "$RUNNER_TEMP/venv/bin/python" graph.py "$RUNNER_TEMP/source.git" site/graph.json
+          "$RUNNER_TEMP/venv/bin/python" graph.py "$RUNNER_TEMP/source.git" site/graph.json --reuse "$RUNNER_TEMP/graph-live.json"
 
       # The link preview (Open Graph image); not committed. A failure here must not stop the deploy.
       - name: Draw link preview

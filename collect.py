@@ -12,7 +12,6 @@ import argparse
 import bisect
 import collections
 import hashlib
-import itertools
 import json
 import multiprocessing
 import os
@@ -129,16 +128,13 @@ def blob_stats(text: bytes):
     parts = code.translate(None, b" \t\r\f\v").split(b"\n")
     end = NOT_HEADER.search(code)
     theorems = sum(k in (b"theorem", b"lemma") for k in kinds)
-    # each declaration's code lines: from its first line to the next declaration or the end
-    before = list(itertools.accumulate((1 if p else 0 for p in parts), initial=0))
-    at, line, pos = [], 0, 0
-    for m in decls:
-        line += code.count(b"\n", pos, m.start())
-        pos = m.start()
-        at.append(line)
+    # each declaration's code lines: from its line (DECL matches at a line start) to the next
+    # declaration or the end, counted in C like the code lines
     lengths = [0] * LENGTH_BINS
-    for a, b in zip(at, at[1:] + [len(parts)]):
-        lengths[bisect.bisect_right(LENGTH_EDGES, max(before[b] - before[a], 1)) - 1] += 1
+    starts = [m.start() for m in decls] + [len(code)]
+    for a, b in zip(starts, starts[1:]):
+        seg = code[a:b].translate(None, b" \t\r\f\v").split(b"\n")
+        lengths[bisect.bisect_right(LENGTH_EDGES, max(len(seg) - seg.count(b""), 1)) - 1] += 1
     hashes = []
     for m in THEOREM.finditer(code):
         s = statement(code, m.end())
@@ -219,6 +215,8 @@ def stats_of(item):
 
 
 def main():
+    import numpy as np  # here, not above: the workflow imports this module without numpy
+
     ap = argparse.ArgumentParser()
     ap.add_argument("repo")
     ap.add_argument("data")
@@ -244,36 +242,39 @@ def main():
     print(f"{len(new)} new commit(s)", file=sys.stderr)
 
     pool = multiprocessing.Pool()  # files are measured on all cores
-    # The theorem statements of the commit, kept from one commit to the next: only the files
-    # that changed are added or taken away.
+    # The totals of a commit are kept from one commit to the next: only the files that changed
+    # (as pairs of folder and blob) are added or taken away. So are its theorem statements, and
+    # the code lines and files of each folder.
     present, statements = collections.Counter(), collections.Counter()
+    width = len(STAT_KEYS) + LENGTH_BINS
+    totals = np.zeros(width, dtype=np.int64)
+    code = STAT_KEYS.index("code")
+    dirs, dir_files = collections.Counter(), collections.Counter()
     for sha, date, subject in new:
         files = lean_blobs(args.repo, sha, args.prefix)
         blobs = [b for _, b in files]
         missing = sorted(set(blobs) - cache.keys())
-        for blob, stats in pool.imap_unordered(stats_of, read_blobs(args.repo, missing), chunksize=64):
-            cache[blob] = stats
-        now = collections.Counter(blobs)
-        for b, k in (now - present).items():
-            for h in cache[b][1]:
-                statements[h] += k
-        for b, k in (present - now).items():
-            for h in cache[b][1]:
-                statements[h] -= k
-                if statements[h] <= 0:
-                    del statements[h]
+        for blob, (counts, hashes) in pool.imap_unordered(stats_of, read_blobs(args.repo, missing), chunksize=64):
+            cache[blob] = (np.array(counts, dtype=np.int64), hashes)
+        now = collections.Counter(files)
+        for change, sign in ((now - present, 1), (present - now, -1)):
+            for (folder, b), k in change.items():
+                counts, hashes = cache[b]
+                totals += sign * k * counts
+                dirs[folder] += sign * k * int(counts[code])
+                dir_files[folder] += sign * k
+                if not dir_files[folder]:
+                    del dirs[folder], dir_files[folder]
+                for h in hashes:
+                    statements[h] += sign * k
+                    if not statements[h]:
+                        del statements[h]
         present = now
-        width = len(STAT_KEYS) + LENGTH_BINS
-        totals = [sum(cache[b][0][i] for b in blobs) for i in range(width)]
-        code = STAT_KEYS.index("code")
-        dirs = {}
-        for folder, b in files:
-            dirs[folder] = dirs.get(folder, 0) + cache[b][0][code]
         pr = re.match(r"Merge pull request #(\d+)", subject)
         entry = {"sha": sha, "date": date, "subject": subject,
                  "pr": int(pr.group(1)) if pr else None, "files": len(blobs)}
-        entry.update(zip(STAT_KEYS, totals))
-        entry["lengths"] = totals[len(STAT_KEYS):]
+        entry.update(zip(STAT_KEYS, totals.tolist()))
+        entry["lengths"] = totals[len(STAT_KEYS):].tolist()
         entry["repeats"] = sum(statements.values()) - len(statements)
         entry["dirs"] = dict(sorted(dirs.items()))
         data["commits"].append(entry)
