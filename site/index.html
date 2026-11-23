@@ -278,8 +278,8 @@ const METRICS = [
   { key: "code",    label: "Code lines*",   color: "--m-lines",   sub: c => `${Math.round(c.code / c.files)} per file`,
     title: "Lines", series: [{ key: "code", label: "Code lines*", color: "--m-lines" },
                              { key: "lines", label: "Total lines", color: "--m-extra" }],
-    // a triangle on the x axis with a label at these pull requests
-    marks: [{ pr: 185, label: "Lean 4.37: Mathlib imports expanded" }] },
+    // a triangle at the top with a label at these pull requests; { code } is set as code
+    marks: [{ pr: 185, label: [{ code: "import Mathlib" }, { text: "replaced by the actually needed parts" }] }] },
   { key: "decls",   label: "Declarations", color: "--m-decls",
     series: [{ key: "defs", label: "Other declarations", color: "--m-decls" },
              { key: "theorems", label: "Theorems", color: "--m-extra" }] },
@@ -454,18 +454,15 @@ const overlay = {
   },
   afterDatasetsDraw(chart) {
     const { ctx, chartArea: a, scales: { x } } = chart;
-    // marks: a small triangle on the x axis with its label, clear of the lines higher up
+    // marks: a small triangle at the top, pointing down, with its label
     ctx.save();
     for (const mk of chart.options.marks_ || []) {
       const px = x.getPixelForValue(mk.x);
       if (px < a.left || px > a.right) continue;
       ctx.fillStyle = css("--text-muted");
-      ctx.beginPath(); ctx.moveTo(px - 5, a.bottom); ctx.lineTo(px + 5, a.bottom); ctx.lineTo(px, a.bottom - 7);
+      ctx.beginPath(); ctx.moveTo(px - 5, a.top); ctx.lineTo(px + 5, a.top); ctx.lineTo(px, a.top + 7);
       ctx.closePath(); ctx.fill();
-      ctx.fillStyle = css("--text-secondary");
-      ctx.font = "11px " + Chart.defaults.font.family;
-      ctx.textAlign = px > (a.left + a.right) / 2 ? "right" : "left"; ctx.textBaseline = "alphabetic";
-      ctx.fillText(mk.label, px + (ctx.textAlign === "left" ? 8 : -8), a.bottom - 3);
+      drawLabel(ctx, mk.label, px, a);
     }
     ctx.restore();
     if (pinned?.chart !== chart || chart.config.type !== "line") return;
@@ -478,6 +475,46 @@ const overlay = {
     ctx.restore();
   },
 };
+
+// The label of a mark: words of text and of code (monospace on a light box, like inline code),
+// wrapped to fit the chart, beside the triangle at px at the top.
+function drawLabel(ctx, label, px, a) {
+  const sans = "11px " + Chart.defaults.font.family, mono = "10.5px ui-monospace, SFMono-Regular, Menlo, monospace";
+  const words = [];
+  for (const seg of label) {
+    // (objects, not strings: Chart.js resolves options and mangles plain strings in arrays)
+    const code = seg.code !== undefined;
+    const text = code ? seg.code : seg.text;
+    if (code) words.push({ text, code });
+    else for (const w of text.trim().split(/\s+/)) words.push({ text: w, code });
+  }
+  const pad = 3, space = (ctx.font = sans, ctx.measureText(" ").width);
+  for (const w of words) { ctx.font = w.code ? mono : sans; w.width = ctx.measureText(w.text).width + (w.code ? 2 * pad : 0); }
+  const right = px > (a.left + a.right) / 2, room = right ? px - 8 - a.left - 4 : a.right - px - 8;
+  const lines = [[]];
+  let used = 0;
+  for (const w of words) {
+    const line = lines[lines.length - 1];
+    if (line.length && used + space + w.width > room) { lines.push([w]); used = w.width; }
+    else { line.push(w); used += (line.length > 1 ? space : 0) + w.width; }
+  }
+  ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+  lines.forEach((line, k) => {
+    const width = line.reduce((t, w) => t + w.width, 0) + space * (line.length - 1);
+    let x = right ? px - 8 - width : px + 8;
+    const y = a.top + 9 + 15 * k;
+    for (const w of line) {
+      if (w.code) {
+        ctx.fillStyle = css("--grid");
+        ctx.beginPath(); ctx.roundRect(x, y - 10, w.width, 14, 3); ctx.fill();
+        ctx.font = mono; ctx.fillStyle = css("--text-primary"); ctx.fillText(w.text, x + pad, y);
+      } else {
+        ctx.font = sans; ctx.fillStyle = css("--text-secondary"); ctx.fillText(w.text, x, y);
+      }
+      x += w.width + space;
+    }
+  });
+}
 
 // Name labels at the right end of each line, pushed apart when they collide.
 const endLabels = {
