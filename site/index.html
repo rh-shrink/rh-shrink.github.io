@@ -211,16 +211,16 @@ footer {
   </details>
 
   <section class="card graph-card" id="g-build" hidden>
-    <h2>Modules that could theoretically build at the same time</h2>
-    <p class="hint">An ideal build on as many cores as needed: every module starts as soon as the modules it imports are built, and takes time in proportion to its code lines* (a rough assumption).</p>
+    <h2>Files that could theoretically build at the same time</h2>
+    <p class="hint">An ideal build on as many cores as needed: every file starts as soon as the files it imports are built, and takes time in proportion to its code lines* (a rough assumption).</p>
     <div class="pair"></div>
   </section>
 
   <section class="card graph-card" id="g-matrix" hidden>
-    <h2>Imports between modules</h2>
-    <p class="hint">Each picture is the project's modules in path order, along both sides, grouped by top-level folder (dotted lines). A cell holds 1/160 of the modules each way and is coloured when modules of its row import modules of its column; the darker, the more imports per pair of modules in the cell:</p>
+    <h2>Imports between files</h2>
+    <p class="hint">Each picture has the project's files along both sides, sorted by path, so that the files of a folder are next to each other; dotted lines separate the top-level folders. A pixel stands for 1/160 of the files each way and is coloured when files of its row import files of its column; the darker, the more imports per pair of files in the pixel:</p>
     <div class="scale"></div>
-    <p class="hint">A well-structured project probably shows dark squares along the diagonal (folders importing mostly from themselves), some vertical stripes (modules that much builds on) and little else; dots spread over the whole picture are imports between unrelated parts. A cell of the RH proof holds about 300 times more pairs of modules than one of Mathlib, so compare the patterns rather than the darkness.</p>
+    <p class="hint">A well-structured project probably shows dark squares along the diagonal (folders importing mostly from themselves), some vertical stripes (files that much builds on) and little else; dots spread over the whole picture are imports between unrelated parts. A pixel of the RH proof holds about 300 times more pairs of files than one of Mathlib, so compare the patterns rather than the darkness.</p>
     <div class="pair"></div>
   </section>
 
@@ -252,14 +252,14 @@ footer {
       <dt>Declarations</dt><dd>theorems and other declarations</dd>
       <dt>Files</dt><dd><code>.lean</code> files under <code>src/</code></dd>
       <dt>Folders</dt><dd>the folders directly in <code>src/</code>, each with everything below it; the files directly in <code>src/</code> are one more group</dd>
-      <dt>Import statements**</dt><dd><code>import</code> statements (also <code>public import</code>, <code>meta import</code>) of the project's own modules, counted as lines starting with one, assuming the usual one import per line; imports of Mathlib, Lean and other dependencies are left out</dd>
+      <dt>Import statements**</dt><dd><code>import</code> statements (also <code>public import</code>, <code>meta import</code>) of the project's own files, counted as lines starting with one, assuming the usual one import per line; imports of Mathlib, Lean and other dependencies are left out</dd>
       <dt>Repeated theorem statements</dt><dd>theorems and lemmas whose statement (from after the name up to <code>:=</code>, white space aside, at least 30 characters) is word for word that of another theorem, counting the copies beyond the first. The same text can mean different things in different namespaces, which is why Mathlib has some too</dd>
       <dt>maxHeartbeats overrides</dt><dd><code>set_option maxHeartbeats</code>, which gives a proof more time than Lean's default</dd>
       <dt>omega and nlinarith</dt><dd>uses of these two tactics, which settle arithmetic by brute force</dd>
       <dt>Declaration lengths</dt><dd>code lines* from a declaration to the next one in its file, or to the end of the file</dd>
-      <dt>Modules, imports</dt><dd>in the pictures of the imports: the <code>.lean</code> files under <code>src/</code>, and the modules of the project their import statements name (imports of Mathlib and other dependencies are left out)</dd>
-      <dt>Mathlib</dt><dd>for comparison, the version of Oct 13, 2026 (<a href="https://github.com/leanprover-community/mathlib4/commit/56a005855ea17e0b0958f73ec801ae140b0a1679">56a0058</a>): its modules under <code>Mathlib/</code> and the imports between them, measured the same way. Nothing special about this version: it's just one I had lying around</dd>
-      <dt>Ideal build</dt><dd>a simulated build on as many cores as needed: every module starts as soon as all modules it imports are built, and takes time in proportion to its code lines*. That is an assumption: how long Lean takes depends mostly on the proofs, which text search cannot tell. The fastest such build takes as long as the longest chain of modules that each import the next, in code lines*; all the other modules can be built beside it</dd>
+      <dt>Imports between files</dt><dd>in the pictures of the imports and the ideal build: which files of the project the import statements of each file name (imports of Mathlib and other dependencies are left out)</dd>
+      <dt>Mathlib</dt><dd>for comparison, the version of Oct 13, 2026 (<a href="https://github.com/leanprover-community/mathlib4/commit/56a005855ea17e0b0958f73ec801ae140b0a1679">56a0058</a>): its files under <code>Mathlib/</code> and the imports between them, measured the same way. Nothing special about this version: it's just one I had lying around</dd>
+      <dt>Ideal build</dt><dd>a simulated build on as many cores as needed: every file starts as soon as all files it imports are built, and takes time in proportion to its code lines*. That is an assumption: how long Lean takes depends mostly on the proofs, which text search cannot tell. The fastest such build takes as long as the longest chain of files that each import the next, in code lines*; all the other files can be built beside it</dd>
     </dl>
     <p>Because this is text search, declarations generated by commands or macros are missed.</p>
   </details>
@@ -284,7 +284,7 @@ const METRICS = [
     series: [{ key: "defs", label: "Other declarations", color: "--m-decls" },
              { key: "theorems", label: "Theorems", color: "--m-extra" }] },
   { key: "files",   label: "Files",        color: "--m-files",   sub: c => fmtBytes(c.bytes) },
-  { key: "imports", label: "Import statements**", note: "** only imports of the project's own modules", color: "--m-imports", sub: c => `${(c.imports / c.files).toFixed(1)} per file` },
+  { key: "imports", label: "Import statements**", note: "** only imports of the project's own files", color: "--m-imports", sub: c => `${(c.imports / c.files).toFixed(1)} per file` },
 ];
 // Small charts of signs of mess, after those of the METRICS (not in the chart relative to the
 // original, not in the tiles); compared with Mathlib in their own card.
@@ -855,7 +855,7 @@ function renderGraph() {
   const spanMax = Math.max(...sides.map(([, g]) => g.build.span));
   const peak = Math.max(...sides.map(([, g]) => Math.max(...g.build.running)));
   // the work on the longest chain of modules, each importing the next, against all of it
-  pair("g-build", g => `${full.format(Math.round(g.build.work))} code lines* in all; the longest chain of modules, each importing the next, has ${full.format(Math.round(g.build.span))} of them`)
+  pair("g-build", g => `${full.format(Math.round(g.build.work))} code lines* in all; the longest chain of files, each importing the next, has ${full.format(Math.round(g.build.span))} of them`)
     .forEach((canvas, k) => {
       const g = sides[k][1], b = g.build, step = b.span / b.running.length;
       graphCharts.push(new Chart(canvas, {
@@ -866,7 +866,7 @@ function renderGraph() {
           { type: "logarithmic", min: 1, max: roundUp(peak),
             ticks: { callback: v => (Number.isInteger(Math.log10(v)) ? compact.format(v) : "") } },
           items => `After ${compact.format(items[0].raw.x)} code lines* (${Math.round(100 * items[0].raw.x / b.span)}% of the build)`,
-          item => [`${full.format(item.raw.y)} ${item.raw.y === 1 ? "module" : "modules"} building at once`, `on the longest chain: ${b.chain[b.at[item.dataIndex]]}`]),
+          item => [`${full.format(item.raw.y)} ${item.raw.y === 1 ? "file" : "files"} building at once`, `on the longest chain: ${b.chain[b.at[item.dataIndex]]}`]),
       }));
     });
 
@@ -886,7 +886,7 @@ function renderGraph() {
   const matrices = box.querySelector(".pair");
   matrices.classList.toggle("three", sides.length === 3);
   matrices.innerHTML = sides.map(([label, g]) =>
-    `<figure><figcaption>${label}</figcaption><canvas class="matrix"></canvas><div class="note">${full.format(g.imports)} imports between ${full.format(g.modules)} modules</div></figure>`).join("");
+    `<figure><figcaption>${label}</figcaption><canvas class="matrix"></canvas><div class="note">${full.format(g.imports)} imports between ${full.format(g.modules)} files</div></figure>`).join("");
   box.querySelectorAll("canvas").forEach((canvas, k) =>
     drawMatrix(canvas, sides[k][1], v => (Math.log(density(sides[k][1], v)) - range[0]) / (range[1] - range[0] || 1)));
 
