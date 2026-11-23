@@ -231,7 +231,7 @@ footer {
 
   <section class="card" id="c-compare" hidden>
     <h2>Compared with Mathlib</h2>
-    <p class="hint">How many times as frequent as in Mathlib (Mathlib = 1×, the solid line; log scale), originally and now. Some repeated theorem statements are not real repeats: the same text can mean different things in different namespaces.</p>
+    <p class="hint">How many times as frequent as in Mathlib (Mathlib = 1×, the solid line; log scale), originally and now.</p>
     <div class="legend"><span><i class="solid" style="background:var(--m-lines);opacity:.45"></i>Originally</span><span><i class="solid" style="background:var(--m-lines)"></i>Now</span></div>
     <div class="chart compare"><canvas></canvas></div>
   </section>
@@ -906,7 +906,8 @@ function renderCompare() {
   // one column per measure, the names on two lines (short ones on narrow screens)
   const ROWS = [
     { label: "maxHeartbeats overrides", short: ["heartbeat", "overrides"], value: v => 1e4 * v.heartbeats / v.code, unit: " per 10 000 code lines*" },
-    { label: "Repeated theorem statements", short: ["repeated", "statements"], value: v => 100 * v.repeats / v.statements, unit: "% of theorem statements" },
+    { label: "Repeated theorem statements", short: ["repeated", "statements"], value: v => 100 * v.repeats / v.statements, unit: "% of theorem statements",
+      note: "Not all are real repeats: the same text can mean different things in different namespaces", shortNote: "Not all are real repeats" },
     { label: "Declarations of 64+ code lines*", short: ["64+ line*", "declarations"], value: v => 100 * sum(v.lengths.slice(lengthEdges.indexOf(64))) / sum(v.lengths), unit: "% of declarations" },
   ];
   const fmt = v => (v >= 10 ? v.toFixed(0) : v >= 1 ? v.toFixed(1) : v.toPrecision(2));
@@ -923,6 +924,23 @@ function renderCompare() {
       ctx.save();
       ctx.strokeStyle = css("--text-primary"); ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.moveTo(a.left, one); ctx.lineTo(a.right, one); ctx.stroke();
+      // a row's note above its bars, centred, wrapped to the width of its group of bars
+      ctx.fillStyle = css("--text-secondary"); ctx.font = "11px " + Chart.defaults.font.family;
+      ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+      const groups = chart.scales.x;
+      ROWS.forEach((r, i) => {
+        if (!r.note) return;
+        const els = chart.data.datasets.map((ds, k) => chart.getDatasetMeta(k).data[i]);
+        const x = groups.getPixelForValue(i), width = 1.6 * Math.abs(els[1].x - els[0].x) + els[0].width;
+        const lines = [""];
+        for (const w of (innerWidth < 600 ? r.shortNote : r.note).split(" ")) {
+          const next = lines[lines.length - 1] ? lines[lines.length - 1] + " " + w : w;
+          if (ctx.measureText(next).width > width && lines[lines.length - 1]) lines.push(w);
+          else lines[lines.length - 1] = next;
+        }
+        const top = Math.min(...els.map(el => el.y)) - 8;
+        lines.forEach((l, k) => ctx.fillText(l, x, top - 14 * (lines.length - 1 - k)));
+      });
       ctx.restore();
     },
   };
