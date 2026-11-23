@@ -277,7 +277,9 @@ const METRICS = [
   // declarations chart shows them split into the theorems (gray) and the others.
   { key: "code",    label: "Code lines*",   color: "--m-lines",   sub: c => `${Math.round(c.code / c.files)} per file`,
     title: "Lines", series: [{ key: "code", label: "Code lines*", color: "--m-lines" },
-                             { key: "lines", label: "Total lines", color: "--m-extra" }] },
+                             { key: "lines", label: "Total lines", color: "--m-extra" }],
+    // a triangle on the x axis with a label at these pull requests
+    marks: [{ pr: 185, label: "Lean 4.37: Mathlib imports expanded" }] },
   { key: "decls",   label: "Declarations", color: "--m-decls",
     series: [{ key: "defs", label: "Other declarations", color: "--m-decls" },
              { key: "theorems", label: "Theorems", color: "--m-extra" }] },
@@ -451,8 +453,22 @@ const overlay = {
     ctx.restore();
   },
   afterDatasetsDraw(chart) {
+    const { ctx, chartArea: a, scales: { x } } = chart;
+    // marks: a small triangle on the x axis with its label, clear of the lines higher up
+    ctx.save();
+    for (const mk of chart.options.marks_ || []) {
+      const px = x.getPixelForValue(mk.x);
+      if (px < a.left || px > a.right) continue;
+      ctx.fillStyle = css("--text-muted");
+      ctx.beginPath(); ctx.moveTo(px - 5, a.bottom); ctx.lineTo(px + 5, a.bottom); ctx.lineTo(px, a.bottom - 7);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = css("--text-secondary");
+      ctx.font = "11px " + Chart.defaults.font.family;
+      ctx.textAlign = px > (a.left + a.right) / 2 ? "right" : "left"; ctx.textBaseline = "alphabetic";
+      ctx.fillText(mk.label, px + (ctx.textAlign === "left" ? 8 : -8), a.bottom - 3);
+    }
+    ctx.restore();
     if (pinned?.chart !== chart || chart.config.type !== "line") return;
-    const { ctx } = chart;
     ctx.save();
     for (const { datasetIndex, element } of pinned.els) {
       ctx.beginPath(); ctx.arc(element.x, element.y, 5, 0, 2 * Math.PI);
@@ -632,6 +648,10 @@ function render() {
   small.forEach((m, j) => {
     const opts = baseOptions(v => compact.format(v));
     opts.scales.y.beginAtZero = true;
+    opts.marks_ = (m.marks || []).map(mk => {
+      const c = commits.find(c => c.pr === mk.pr);
+      return c && { x: Date.parse(c.date), label: mk.label };
+    }).filter(Boolean);
     const series = m.series || [m];
     opts.plugins.tooltip.callbacks = {
       label: item => {
