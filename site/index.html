@@ -454,15 +454,16 @@ const overlay = {
   },
   afterDatasetsDraw(chart) {
     const { ctx, chartArea: a, scales: { x } } = chart;
-    // marks: a small triangle at the top, pointing down, with its label
+    // marks: a small triangle pointing down at the highest line, a little above it, with its label
     ctx.save();
     for (const mk of chart.options.marks_ || []) {
       const px = x.getPixelForValue(mk.x);
       if (px < a.left || px > a.right) continue;
       ctx.fillStyle = css("--text-muted");
-      ctx.beginPath(); ctx.moveTo(px - 5, a.top); ctx.lineTo(px + 5, a.top); ctx.lineTo(px, a.top + 7);
+      const top = Math.max(a.top, chart.scales.y.getPixelForValue(mk.y) - 16);
+      ctx.beginPath(); ctx.moveTo(px - 5, top); ctx.lineTo(px + 5, top); ctx.lineTo(px, top + 7);
       ctx.closePath(); ctx.fill();
-      drawLabel(ctx, mk.label, px, a);
+      drawLabel(ctx, mk.label, px, top, a);
     }
     ctx.restore();
     if (pinned?.chart !== chart || chart.config.type !== "line") return;
@@ -477,8 +478,8 @@ const overlay = {
 };
 
 // The label of a mark: words of text and of code (monospace on a light box, like inline code),
-// wrapped to fit the chart, beside the triangle at px at the top.
-function drawLabel(ctx, label, px, a) {
+// wrapped to fit the chart, beside the triangle at (px, top).
+function drawLabel(ctx, label, px, top, a) {
   const sans = "11px " + Chart.defaults.font.family, mono = "10.5px ui-monospace, SFMono-Regular, Menlo, monospace";
   const words = [];
   for (const seg of label) {
@@ -502,7 +503,7 @@ function drawLabel(ctx, label, px, a) {
   lines.forEach((line, k) => {
     const width = line.reduce((t, w) => t + w.width, 0) + space * (line.length - 1);
     let x = right ? px - 8 - width : px + 8;
-    const y = a.top + 9 + 15 * k;
+    const y = top + 9 + 15 * k;
     for (const w of line) {
       if (w.code) {
         ctx.fillStyle = css("--grid");
@@ -685,11 +686,11 @@ function render() {
   small.forEach((m, j) => {
     const opts = baseOptions(v => compact.format(v));
     opts.scales.y.beginAtZero = true;
+    const series = m.series || [m];
     opts.marks_ = (m.marks || []).map(mk => {
       const c = commits.find(c => c.pr === mk.pr);
-      return c && { x: Date.parse(c.date), label: mk.label };
+      return c && { x: Date.parse(c.date), y: Math.max(...series.map(s => c[s.key])), label: mk.label };
     }).filter(Boolean);
-    const series = m.series || [m];
     opts.plugins.tooltip.callbacks = {
       label: item => {
         const s = series[item.datasetIndex];
