@@ -24,7 +24,8 @@ import threading
 # 3: heartbeat overrides, omega/nlinarith, declaration lengths, repeated theorem statements.
 # 4: finer declaration lengths.
 # 5: code lines without the file header (imports, module, prelude).
-VERSION = 5
+# 6: only imports of the project's own modules.
+VERSION = 6
 STAT_KEYS = ("bytes", "lines", "code", "theorems", "defs", "imports", "heartbeats", "arith",
              "statements")
 # Declaration lengths in code lines: bin k holds LENGTH_EDGES[k] up to the next edge (exclusive);
@@ -40,7 +41,9 @@ DECL = re.compile(
     rb"(theorem|lemma|def|abbrev|instance|structure|inductive|class|opaque|axiom)\b",
     re.M,
 )
-IMPORT = re.compile(rb"^(?:public[ \t]+)?(?:meta[ \t]+)?import[ \t]", re.M)
+# Imports of the project's own modules: not of Lean, its standard library or a dependency.
+DEPENDENCIES = rb"Init|Std|Lean|Lake|Mathlib|Batteries|Aesop|Qq|Plausible|ProofWidgets|LeanSearchClient|ImportGraph|Cli"
+IMPORT = re.compile(rb"^(?:public[ \t]+)?(?:meta[ \t]+)?import[ \t]+(?:all[ \t]+)?(?!(?:" + DEPENDENCIES + rb")\b)\S", re.M)
 CODE_TOKEN = re.compile(rb'/-|--|"')
 COMMENT_TOKEN = re.compile(rb"/-|-/")
 STRING_END = re.compile(rb'(?:[^"\\]|\\.)*"', re.S)

@@ -181,7 +181,7 @@ footer {
     <section class="card hero">
       <span class="value" id="hero"></span>
       <span class="label">of the original code lines* left</span>
-      <span class="star">* without imports</span>
+      <span class="star">* without imports<br>** only imports of the project's own modules</span>
     </section>
     <section class="tiles" id="tiles"></section>
   </div>
@@ -252,7 +252,7 @@ footer {
       <dt>Declarations</dt><dd>theorems and other declarations</dd>
       <dt>Files</dt><dd><code>.lean</code> files under <code>src/</code></dd>
       <dt>Folders</dt><dd>the folders directly in <code>src/</code>, each with everything below it; the files directly in <code>src/</code> are one more group</dd>
-      <dt>Import statements</dt><dd><code>import</code> statements (also <code>public import</code>, <code>meta import</code>), counted as lines starting with one, assuming the usual one import per line</dd>
+      <dt>Import statements**</dt><dd><code>import</code> statements (also <code>public import</code>, <code>meta import</code>) of the project's own modules, counted as lines starting with one, assuming the usual one import per line; imports of Mathlib, Lean and other dependencies are left out</dd>
       <dt>Repeated theorem statements</dt><dd>theorems and lemmas whose statement (from after the name up to <code>:=</code>, white space aside, at least 30 characters) is word for word that of another theorem, counting the copies beyond the first. The same text can mean different things in different namespaces, which is why Mathlib has some too</dd>
       <dt>maxHeartbeats overrides</dt><dd><code>set_option maxHeartbeats</code>, which gives a proof more time than Lean's default</dd>
       <dt>omega and nlinarith</dt><dd>uses of these two tactics, which settle arithmetic by brute force</dd>
@@ -282,7 +282,7 @@ const METRICS = [
     series: [{ key: "defs", label: "Other declarations", color: "--m-decls" },
              { key: "theorems", label: "Theorems", color: "--m-extra" }] },
   { key: "files",   label: "Files",        color: "--m-files",   sub: c => fmtBytes(c.bytes) },
-  { key: "imports", label: "Import statements", color: "--m-imports", sub: c => `${(c.imports / c.files).toFixed(1)} per file` },
+  { key: "imports", label: "Import statements**", color: "--m-imports", sub: c => `${(c.imports / c.files).toFixed(1)} per file` },
 ];
 // Small charts of signs of mess, after those of the METRICS (not in the chart relative to the
 // original, not in the tiles); compared with Mathlib in their own card.
@@ -728,7 +728,7 @@ function render() {
       <td>${full.format(c.decls)}</td><td>${full.format(c.theorems)}</td><td>${full.format(c.files)}</td><td>${full.format(c.imports)}</td></tr>`;
   }).join("");
   document.getElementById("table").innerHTML =
-    `<thead><tr><th>Commit</th><th>Title</th><th>Date</th><th>Code lines*</th><th>Δ code lines*</th><th>Total lines</th><th>Declarations</th><th>Theorems</th><th>Files</th><th>Import statements</th></tr></thead><tbody>${rows}</tbody>`;
+    `<thead><tr><th>Commit</th><th>Title</th><th>Date</th><th>Code lines*</th><th>Δ code lines*</th><th>Total lines</th><th>Declarations</th><th>Theorems</th><th>Files</th><th>Import statements**</th></tr></thead><tbody>${rows}</tbody>`;
 }
 
 // The import graph pictures (graph.json): originally, now and, for comparison, Mathlib
