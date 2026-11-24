@@ -99,8 +99,23 @@ h2 { font-size: 14px; font-weight: 600; margin: 0 0 10px; color: var(--text-seco
 .legend i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
 .chart { position: relative; height: 320px; }
 .chart canvas { -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; }
+/* touch: a sideways drag zooms the chart relative to the original, up and down still scroll */
+#chart-index { touch-action: pan-y pinch-zoom; }
 .chart.small { height: 200px; }
 .chart.compare { height: 280px; }
+/* a card title with a control at its right */
+.head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 12px; margin-bottom: 10px; }
+.head h2 { margin: 0; }
+.zoom { font-size: 12px; line-height: 20px; color: var(--text-muted); }
+.zoom button {
+  font: inherit; line-height: 18px; color: var(--text-secondary); background: var(--surface-0);
+  border: 1px solid var(--border); border-radius: 999px; padding: 0 10px; cursor: pointer;
+}
+.zoom button:hover { color: var(--text-primary); border-color: var(--text-muted); }
+.zoom-box {
+  position: absolute; pointer-events: none; border: 1px solid var(--m-lines); border-radius: 2px;
+  background: color-mix(in srgb, var(--m-lines) 10%, transparent);
+}
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0; }
 details, main > .card { margin-top: 12px; }  /* margins collapse: 12px between all cards */
 summary { cursor: pointer; color: var(--text-secondary); font-size: 14px; font-weight: 600; }
@@ -187,7 +202,7 @@ footer {
   </div>
 
   <section class="card">
-    <h2>Relative to the original</h2>
+    <div class="head"><h2>Relative to the original</h2><span class="zoom" id="zoom"></span></div>
     <div class="legend" id="legend"></div>
     <div class="chart"><canvas id="chart-index"></canvas></div>
   </section>
@@ -302,16 +317,25 @@ const fmtDate = t => new Date(t).toLocaleString("en", {
   timeZone: TZ, month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
 }) + " UTC";
 
-// Ticks on UTC midnights only (dates, no times), at most about 6 per axis (3 on narrow charts).
+// Ticks on UTC midnights (dates, no times), at most about 6 per axis (3 on narrow charts); on
+// round times of day only for less time than about that many half days (zoomed in).
+const STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 180, 360, 720, 1440, 2880, 4320, 10080, 20160, 43200];  // minutes
 function timeTicks(scale) {
-  const hours = (scale.max - scale.min) / 3.6e6, target = scale.width < 400 ? 3 : 6;
-  const step = [24, 48, 72, 168, 336, 720].find(h => hours / h <= target) || 720;
+  const minutes = (scale.max - scale.min) / 6e4, target = scale.width < 400 ? 3 : 6;
+  const step = (STEPS.find(m => minutes / m <= target) || 43200) * 6e4;
   const ticks = [];
-  for (let t = Math.floor(scale.min / DAY) * DAY; t <= scale.max; t += step * 3.6e6)
+  // (steps shorter than a day divide it, so they fall on the same times every day)
+  for (let t = step < DAY ? Math.ceil(scale.min / step) * step : Math.floor(scale.min / DAY) * DAY; t <= scale.max; t += step)
     if (t >= scale.min) ticks.push({ value: t });
   scale.ticks = ticks;
 }
-const fmtTick = t => new Date(t).toLocaleString("en", { timeZone: TZ, month: "short", day: "numeric" });
+// The date at midnight, otherwise the time (with the date at the first tick).
+const fmtTick = (t, i) => {
+  const date = new Date(t).toLocaleString("en", { timeZone: TZ, month: "short", day: "numeric" });
+  if (t % DAY === 0) return date;
+  const time = new Date(t).toLocaleString("en", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  return i === 0 ? `${date}, ${time}` : time;
+};
 const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const signed = (v, f = compact.format) => (v < 0 ? "−" : v > 0 ? "+" : "±") + f(Math.abs(v));
 const commitLabel = c => (c.pr ? `#${c.pr}` : c.sha.slice(0, 7));
@@ -341,7 +365,9 @@ function showTip({ chart, tooltip }) {
     tooltip.afterBody.map(l => `<div class="subject">${escapeHtml(l)}</div>`).join("") +
     `<div class="open">Click to select</div>`;
   tip.href = commitUrl(c);
-  placeTip(chart.canvas, tooltip.caretX);
+  // (zoomed in, the commit can be left of the chart, its value going on into it)
+  const a = chart.chartArea;
+  placeTip(chart.canvas, Math.min(Math.max(tooltip.caretX, a.left), a.right));
 }
 
 // Always above the chart, centred on the point, so the chart stays visible.
@@ -374,23 +400,38 @@ const NEAR = touch ? 24 : 10;
 const distToBox = (px, py, x1, y1, x2, y2) => Math.hypot(
   px - Math.max(Math.min(x1, x2), Math.min(px, Math.max(x1, x2))),
   py - Math.max(Math.min(y1, y2), Math.min(py, Math.max(y1, y2))));
+// Where the lines are drawn: the chart area and the margin their clip lets them overstep it by
+// (zoomed in, they go on beyond it; bars are not clipped).
+function drawnArea(chart) {
+  const a = chart.chartArea, c = chart.data.datasets[0]?.clip;
+  const m = typeof c === "number" ? { left: c, top: c, right: c, bottom: c } : c;
+  if (!m || typeof m !== "object") return { left: -Infinity, top: -Infinity, right: Infinity, bottom: Infinity };
+  return { left: a.left - m.left, top: a.top - m.top, right: a.right + m.right, bottom: a.bottom + m.bottom };
+}
 Chart.Interaction.modes.nearLine = (chart, e) => {
   let best = { d: Infinity, i: -1 };
+  // the distance to the drawn part of a box
+  const v = drawnArea(chart);
+  const near = (x1, y1, x2, y2) => {
+    const l = Math.max(Math.min(x1, x2), v.left), r = Math.min(Math.max(x1, x2), v.right);
+    const t = Math.max(Math.min(y1, y2), v.top), b = Math.min(Math.max(y1, y2), v.bottom);
+    return l > r || t > b ? Infinity : distToBox(e.x, e.y, l, t, r, b);
+  };
   chart.data.datasets.forEach((ds, k) => {
     const consider = (d, i) => { if (d < best.d) best = { d, i, k }; };
     const pts = chart.getDatasetMeta(k).data;
     pts.forEach((p, i) => {
       if (chart.config.type === "bar") {
         const { x, y, base, width, height } = p.getProps(["x", "y", "base", "width", "height"]);
-        if (chart.options.indexAxis === "y") consider(distToBox(e.x, e.y, x, y - height / 2, base, y + height / 2), i);
-        else consider(distToBox(e.x, e.y, x - width / 2, y, x + width / 2, base), i);
+        if (chart.options.indexAxis === "y") consider(near(x, y - height / 2, base, y + height / 2), i);
+        else consider(near(x - width / 2, y, x + width / 2, base), i);
       } else if (i === 0) {
-        consider(Math.hypot(e.x - p.x, e.y - p.y), 0);
+        consider(near(p.x, p.y, p.x, p.y), 0);
       } else {
         const q = pts[i - 1];
         const nearer = e.x - q.x < p.x - e.x ? i - 1 : i;
-        consider(distToBox(e.x, e.y, q.x, q.y, p.x, q.y), nearer);  // flat stretch
-        consider(distToBox(e.x, e.y, p.x, q.y, p.x, p.y), i);       // step at this commit
+        consider(near(q.x, q.y, p.x, q.y), nearer);  // flat stretch
+        consider(near(p.x, q.y, p.x, p.y), i);       // step at this commit
       }
     });
   });
@@ -457,7 +498,10 @@ const overlay = {
     if (chart.config.type !== "line") return;
     const els = pinned?.chart === chart ? pinned.els : chart.tooltip?.getActiveElements?.() || [];
     if (!els.length) return;
-    const { ctx } = chart, x = els[0].element.x, ys = els.map(e => e.element.y);
+    // only over what is drawn: zoomed in, the commit or some of its points can be off the chart
+    const { ctx } = chart, v = drawnArea(chart), x = els[0].element.x;
+    const ys = els.map(e => e.element.y).filter(y => y >= v.top && y <= v.bottom);
+    if (x < v.left || x > v.right || !ys.length) return;
     const top = Math.min(...ys), bottom = Math.max(...ys);
     ctx.save();
     ctx.strokeStyle = css("--text-muted"); ctx.lineWidth = 1;
@@ -484,7 +528,9 @@ const overlay = {
     ctx.restore();
     if (pinned?.chart !== chart || chart.config.type !== "line") return;
     ctx.save();
+    const v = drawnArea(chart);
     for (const { datasetIndex, element } of pinned.els) {
+      if (element.x < v.left || element.x > v.right || element.y < v.top || element.y > v.bottom) continue;
       ctx.beginPath(); ctx.arc(element.x, element.y, 5, 0, 2 * Math.PI);
       ctx.fillStyle = chart.data.datasets[datasetIndex].borderColor; ctx.fill();
       ctx.strokeStyle = css("--surface-1"); ctx.lineWidth = 2; ctx.stroke();
@@ -539,11 +585,12 @@ const endLabels = {
   afterDatasetsDraw(chart) {
     if (!chart.options.endLabels_) return;
     const { ctx, chartArea: a } = chart;
+    // at the line's value at the right edge (zoomed in: of the last commit before it); none for a
+    // line that is off the chart there
     const labels = chart.data.datasets.map((ds, i) => {
-      const pts = chart.getDatasetMeta(i).data;
-      const p = pts[pts.length - 1];
-      return { y: p.y, x: p.x, text: ds.label, color: ds.borderColor };
-    }).sort((p, q) => p.y - q.y);
+      const p = chart.getDatasetMeta(i).data.findLast(p => p.x <= a.right + 0.5);
+      return { y: p?.y, text: ds.label, color: ds.borderColor };
+    }).filter(l => l.y >= a.top - 0.5 && l.y <= a.bottom + 0.5).sort((p, q) => p.y - q.y);
     for (let i = 1; i < labels.length; i++) labels[i].y = Math.max(labels[i].y, labels[i - 1].y + 15);
     ctx.save();
     ctx.font = "12px " + Chart.defaults.font.family; ctx.textBaseline = "middle";
@@ -596,14 +643,15 @@ function baseOptions(yTicks) {
     events: touch ? ["click"] : ["mousemove", "mouseout", "click"],
     interaction: { mode: "nearLine" },
     onHover: (e, els, chart) => {
-      chart.canvas.style.cursor = els.length ? "pointer" : "";
+      // a crosshair where a drag zooms in
+      chart.canvas.style.cursor = els.length ? "pointer" : chart.$range && chart.isPointInArea(e) ? "crosshair" : "";
       if (pinned?.chart !== chart) highlight(chart, els.length ? chart.$near : undefined);
     },
     scales: {
       // Tick marks at the dates, below the axis only.
       x: { type: "linear", min: xs[0], max: xs[xs.length - 1], border: { color: grid },
            grid: { drawOnChartArea: false, drawTicks: true, tickLength: 5, color: muted },
-           afterBuildTicks: timeTicks, ticks: { color: muted, maxRotation: 0, callback: v => fmtTick(v) } },
+           afterBuildTicks: timeTicks, ticks: { color: muted, maxRotation: 0, callback: (v, i) => fmtTick(v, i) } },
       y: { grid: { color: grid }, border: { display: false },
            ticks: { color: muted, maxTicksLimit: 6, callback: yTicks } },
     },
@@ -638,6 +686,118 @@ function gradient(ctx, color) {
   return g;
 }
 
+// Zoom of the chart relative to the original, where the lines are too far apart for an axis that
+// fits them all to show small changes: a drag over it zooms into the dragged rectangle, a flat
+// one only into the time, a narrow one only into the percentages. Undone by "Reset zoom" or a
+// double click; kept when new commits redraw the chart. On touch screens a drag that starts
+// sideways zooms; up and down scroll the page.
+let zoom = null;  // { x: [min, max], y: [min, max] }, an axis missing for its full range
+const ZOOM_MIN = 12;  // px: a drag at least this wide (high) zooms into the time (percentages)
+const zoomCanvas = document.getElementById("chart-index");
+const zoomBox = Object.assign(document.createElement("div"), { className: "zoom-box", hidden: true });
+zoomCanvas.parentElement.append(zoomBox);
+
+// The axes at the zoom, or at the full range. The lines may overstep the chart area a little (for
+// whole dots at its edges) only on the axes not zoomed, beyond which there is nothing.
+function setZoom(options, datasets, range) {
+  const { x, y } = options.scales;
+  [x.min, x.max] = zoom?.x || range.x;
+  [y.min, y.max] = zoom?.y || range.y;
+  const sx = zoom?.x ? 0 : 6, sy = zoom?.y ? 0 : 6;
+  for (const ds of datasets) ds.clip = { left: sx, right: sx, top: sy, bottom: sy };
+}
+
+function zoomTo(z) {
+  unpin();
+  zoom = z?.x || z?.y ? z : null;
+  const chart = Chart.getChart(zoomCanvas);
+  if (chart) { setZoom(chart.options, chart.data.datasets, chart.$range); chart.update("none"); }
+  showZoom();
+}
+
+function showZoom() {
+  document.getElementById("zoom").innerHTML = zoom ? `<button type="button"${touch ? "" : ' title="or double-click the chart"'}>Reset zoom</button>`
+    : touch ? "Drag sideways to zoom" : "Drag to zoom";
+}
+document.getElementById("zoom").addEventListener("click", e => { if (e.target.closest("button")) zoomTo(null); });
+zoomCanvas.addEventListener("dblclick", () => { if (zoom) zoomTo(null); });
+
+// The band or rectangle that a drag zooms into, within the chart area a.
+function zoomRect(d, a) {
+  const wide = Math.abs(d.x1 - d.x0) >= ZOOM_MIN, high = Math.abs(d.y1 - d.y0) >= ZOOM_MIN;
+  return {
+    wide, high,
+    left: wide ? Math.min(d.x0, d.x1) : a.left, right: wide ? Math.max(d.x0, d.x1) : a.right,
+    top: high ? Math.min(d.y0, d.y1) : a.top, bottom: high ? Math.max(d.y0, d.y1) : a.bottom,
+  };
+}
+// [lo, hi] widened around its middle to at least `least` (5 minutes, 0.05%), within the full range
+const atLeast = ([lo, hi], least, [min, max]) => {
+  const w = Math.max(hi - lo, least), m = Math.min(Math.max((lo + hi) / 2, min + w / 2), max - w / 2);
+  return [m - w / 2, m + w / 2];
+};
+
+let drag = null, swallowClick = false;  // { id, x0, y0, x1, y1, on } in px of the canvas
+const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+zoomCanvas.addEventListener("pointerdown", e => {
+  const a = Chart.getChart(zoomCanvas)?.chartArea, r = zoomCanvas.getBoundingClientRect();
+  const x = e.clientX - r.left, y = e.clientY - r.top;
+  if (!a || e.button !== 0 || x < a.left || x > a.right || y < a.top || y > a.bottom) return;
+  drag = { id: e.pointerId, x0: x, y0: y, x1: x, y1: y, on: false };
+  zoomCanvas.setPointerCapture(e.pointerId);
+});
+zoomCanvas.addEventListener("pointermove", e => {
+  if (e.pointerId !== drag?.id) return;
+  const chart = Chart.getChart(zoomCanvas), a = chart.chartArea, r = zoomCanvas.getBoundingClientRect();
+  drag.x1 = clamp(e.clientX - r.left, a.left, a.right);
+  drag.y1 = clamp(e.clientY - r.top, a.top, a.bottom);
+  // only after a few px, so that a click stays a click (on touch screens: sideways ones, as
+  // the page may be about to scroll)
+  if (!drag.on) {
+    const dx = Math.abs(drag.x1 - drag.x0), dy = Math.abs(drag.y1 - drag.y0);
+    if ((e.pointerType === "touch" ? dx : Math.max(dx, dy)) < 4) return;
+    drag.on = true;
+    unpin();
+    chart.tooltip.setActiveElements([], { x: 0, y: 0 });
+    highlight(chart, undefined);
+    chart.update("none");
+    zoomCanvas.style.cursor = "crosshair";
+  }
+  const z = zoomRect(drag, a);
+  zoomBox.hidden = !z.wide && !z.high;
+  Object.assign(zoomBox.style, { left: z.left + "px", top: z.top + "px", width: z.right - z.left + "px", height: z.bottom - z.top + "px" });
+});
+zoomCanvas.addEventListener("pointerup", e => {
+  if (e.pointerId !== drag?.id) return;
+  const d = drag;
+  drag = null; zoomBox.hidden = true;
+  if (!d.on) return;
+  // the click that ends a drag pins no popup
+  swallowClick = true; setTimeout(() => { swallowClick = false; });
+  const chart = Chart.getChart(zoomCanvas), z = zoomRect(d, chart.chartArea), { x, y } = chart.scales;
+  if (!z.wide && !z.high) return;
+  zoomTo({
+    x: z.wide ? atLeast([x.getValueForPixel(z.left), x.getValueForPixel(z.right)], 5 * 6e4, chart.$range.x) : zoom?.x,
+    y: z.high ? atLeast([y.getValueForPixel(z.bottom), y.getValueForPixel(z.top)], 0.05, chart.$range.y) : zoom?.y,
+  });
+});
+// (on touch screens, when the page scrolls instead)
+zoomCanvas.addEventListener("pointercancel", () => { drag = null; zoomBox.hidden = true; });
+addEventListener("click", e => { if (swallowClick) { swallowClick = false; e.stopPropagation(); } }, true);
+// no popups or highlighted lines while dragging
+const zoomer = { id: "zoomer", beforeEvent: () => (drag?.on ? false : undefined) };
+// With the page pinch-zoomed in, a sideways drag over the chart pans the page, as anywhere else.
+window.visualViewport?.addEventListener("resize", () => {
+  zoomCanvas.style.touchAction = visualViewport.scale > 1.01 ? "auto" : "";
+});
+
+// Percentages with as many decimals as the step between the ticks needs (zoomed in, it can be a
+// fraction of a percent).
+function pctTick(v, i, ticks) {
+  const step = ticks.length > 1 ? ticks[1].value - ticks[0].value : 1;
+  return v.toFixed(Math.max(0, -Math.floor(Math.log10(step) + 1e-6))) + "%";
+}
+
 function render() {
   unpin();
   charts.forEach(c => c.destroy());
@@ -669,13 +829,14 @@ function render() {
   // Indexed chart
   document.getElementById("legend").innerHTML = METRICS.map(m =>
     `<span><i style="background:${css(m.color)}"></i>${m.label}</span>`).join("");
-  const idxOpts = baseOptions(v => v + "%");
+  const idxOpts = baseOptions(pctTick);
   // A fixed 0–100% axis, so that progress shows as the lines sinking; an axis that followed the
   // data would rescale with every drop and always look the same. Above 100% only if the data
   // ever grows past a hair (the lines Challenge.lean added are not worth a 110% tick).
+  // Zooming in changes it (see zoom).
   const pcts = METRICS.flatMap(m => commits.map(c => 100 * c[m.key] / first[m.key]));
-  idxOpts.scales.y.min = 0;
-  idxOpts.scales.y.max = Math.max(100, Math.ceil(Math.max(...pcts) / 10 - 0.01) * 10);
+  const fullRange = { x: [xs[0], xs[xs.length - 1]], y: [0, Math.max(100, Math.ceil(Math.max(...pcts) / 10 - 0.01) * 10)] };
+  idxOpts.scales.y.ticks.includeBounds = false;  // (zoomed in, the edges are no round numbers)
   idxOpts.endLabels_ = innerWidth >= 600;
   if (idxOpts.endLabels_) {
     // Room for the longest end label, measured in the font this browser uses.
@@ -690,11 +851,14 @@ function render() {
     },
     afterBody: items => commits[items[0].dataIndex].subject,
   };
-  charts.push(new Chart(document.getElementById("chart-index"), {
-    type: "line",
-    data: { datasets: METRICS.map(m => lineDataset(m, commits.map((c, i) => ({ x: xs[i], y: 100 * c[m.key] / first[m.key] })), false)) },
-    options: idxOpts, plugins: [overlay, endLabels],
-  }));
+  const idxData = METRICS.map(m => lineDataset(m, commits.map((c, i) => ({ x: xs[i], y: 100 * c[m.key] / first[m.key] })), false));
+  setZoom(idxOpts, idxData, fullRange);
+  const idx = new Chart(zoomCanvas, {
+    type: "line", data: { datasets: idxData }, options: idxOpts, plugins: [overlay, endLabels, zoomer],
+  });
+  idx.$range = fullRange;
+  charts.push(idx);
+  showZoom();
 
   // Small multiples
   const box = document.getElementById("multiples");
