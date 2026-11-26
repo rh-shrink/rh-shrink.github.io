@@ -125,6 +125,7 @@ th:first-child, td:first-child { position: sticky; left: 0; background: var(--su
 .folders .num { text-align: right; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; }
 .pair.three { grid-template-columns: 1fr 1fr 1fr; }
+.pair.four { grid-template-columns: 1fr 1fr; }
 .pair figure { margin: 0; min-width: 0; }
 /* panel titles centred over their panel, so they do not read as a title of the y axis */
 .pair figcaption { font-size: 13px; color: var(--text-primary); font-weight: 600; text-align: center; margin-bottom: 8px; }
@@ -165,7 +166,7 @@ footer {
   .hero .value { font-size: 48px; }
   .method dl { grid-template-columns: 1fr; gap: 2px; }
   .method dd { margin-bottom: 8px; }
-  .pair, .pair.three { grid-template-columns: 1fr; }
+  .pair, .pair.three, .pair.four { grid-template-columns: 1fr; }
   .folders { grid-template-columns: 1fr max-content; grid-auto-flow: row dense; gap: 4px 12px; }
   .folders .bar { grid-column: 1 / -1; margin-bottom: 6px; }
 }
@@ -196,17 +197,17 @@ footer {
   <div class="grid2" id="multiples"></div>
 
   <details class="card">
-    <summary>Commits, newest first</summary>
+    <summary>Commits, newest first, back to the original (Nov 20)</summary>
     <div class="table-wrap"><table id="table"></table></div>
   </details>
 
   <details class="card">
-    <summary>Code lines* added or removed by each commit that changes them</summary>
+    <summary>Code lines* added or removed by each commit that changes them, since the readable edition (Nov 25)</summary>
     <div class="chart small"><canvas id="chart-delta"></canvas></div>
   </details>
 
   <details class="card" id="folders-card" hidden>
-    <summary>Code lines* by folder</summary>
+    <summary>Code lines* by folder, now and in the readable edition (Nov 25)</summary>
     <div class="legend"><span><i class="solid" style="background:var(--m-lines)"></i>Now</span><span><i class="tint"></i>Readable edition</span></div>
     <div class="folders" id="folders"></div>
   </details>
@@ -221,13 +222,13 @@ footer {
     <h2>Imports between files</h2>
     <p class="hint">Each picture has the project's files along both sides, sorted by path, so that the files of a folder are next to each other; dotted lines separate the top-level folders. A pixel stands for 1/160 of the files each way and is coloured when files of its row import files of its column; the darker, the more imports per pair of files in the pixel:</p>
     <div class="scale"></div>
-    <p class="hint">A well-structured project probably shows dark squares along the diagonal (folders importing mostly from themselves), some vertical stripes (files that much builds on) and little else; dots spread over the whole picture are imports between unrelated parts. A pixel of the RH proof holds about 300 times more pairs of files than one of Mathlib, so compare the patterns rather than the darkness.</p>
+    <p class="hint">A well-structured project probably shows dark squares along the diagonal (folders importing mostly from themselves), some vertical stripes (files that much builds on) and little else; dots spread over the whole picture are imports between unrelated parts. The projects differ in size, so a pixel holds a different number of pairs of files in each picture: compare the patterns rather than the darkness.</p>
     <div class="pair"></div>
   </section>
 
   <section class="card graph-card" id="c-lengths" hidden>
     <h2>Declarations by length</h2>
-    <div class="pair three"></div>
+    <div class="pair"></div>
   </section>
 
   <section class="card" id="c-compare" hidden>
@@ -864,7 +865,8 @@ function render() {
 
   // Table
   const rows = series.slice().reverse().map((c, i, arr) => {
-    const prev = arr[i + 1];
+    // (none across the jump: the readable edition is no change of the commit before it)
+    const prev = c === commits[0] ? undefined : arr[i + 1];
     // above the newest commit of the earlier history: what happened
     const jump = earlier.length && c === earlier[earlier.length - 1]
       ? `<tr class="jump"><td colspan="10">↑ Nov 25, 2026: <code>main</code> replaced by the readable edition of grh-lean. Below: <code>main</code> before that; it goes on in the branch <code>alpoge</code>.</td></tr>` : "";
@@ -879,22 +881,25 @@ function render() {
     `<thead><tr><th>Commit</th><th>Title</th><th>Date</th><th>Code lines*</th><th>Δ code lines*</th><th>Total lines</th><th>Declarations</th><th>Theorems</th><th>Files</th><th>Import statements**</th></tr></thead><tbody>${rows}</tbody>`;
 }
 
-// The import graph pictures (graph.json): originally, now and, for comparison, Mathlib
-// (mathlib.json, fixed), side by side. Mathlib is far smaller, so the scales are shares of each
+// The import graph pictures (graph.json): the original (graph-earlier.json, fixed: the first commit
+// of the earlier history), the readable edition, now and, for comparison, Mathlib (mathlib.json,
+// fixed), side by side. Mathlib is far smaller, so the scales are shares of each
 // project's modules, shared by all panels; the popups give the numbers.
-let graph = null, mathlib = null, graphCharts = [];
+let graph = null, mathlib = null, graphEarlier = null, graphCharts = [];
 function renderGraph() {
   graphCharts.forEach(c => c.destroy());
   graphCharts = [];
   if (!graph?.original || !graph?.now) return;
   const sides = [["Readable edition", graph.original], ["Now", graph.now]];
+  if (graphEarlier?.now && graphEarlier.version === graph.version) sides.unshift(["Original", graphEarlier.now]);
   if (mathlib?.now) sides.push([`Mathlib, for comparison`, mathlib.now]);
+  const columns = box => { box.classList.toggle("three", sides.length === 3); box.classList.toggle("four", sides.length === 4); };
   const blue = css("--m-lines"), muted = css("--text-muted"), grid = css("--grid");
   const pair = (id, note) => {
     const card = document.getElementById(id);
     card.hidden = false;
     const box = card.querySelector(".pair");
-    box.classList.toggle("three", sides.length === 3);
+    columns(box);
     box.innerHTML = sides.map(([label, g]) => `<figure><figcaption>${label}</figcaption><div class="chart small"><canvas></canvas></div><div class="note">${note(g)}</div></figure>`).join("");
     return [...box.querySelectorAll("canvas")];
   };
@@ -953,7 +958,7 @@ function renderGraph() {
   const box = document.getElementById("g-matrix");
   box.hidden = false;
   const matrices = box.querySelector(".pair");
-  matrices.classList.toggle("three", sides.length === 3);
+  columns(matrices);
   matrices.innerHTML = sides.map(([label, g]) =>
     `<figure><figcaption>${label}</figcaption><canvas class="matrix"></canvas><div class="note">${full.format(g.imports)} imports between ${full.format(g.modules)} files</div></figure>`).join("");
   box.querySelectorAll("canvas").forEach((canvas, k) =>
@@ -1058,12 +1063,14 @@ function renderCompare() {
   const E = lengthEdges;
   const BINS = E.map((e, i) => (i === E.length - 1 ? `${e}+` : E[i + 1] - e === 1 ? `${e}` : `${e}–${E[i + 1] - 1}`));
   const sides = [["Readable edition", first.lengths], ["Now", last.lengths], ["Mathlib, for comparison", ml.lengths]];
+  if (earlier.length) sides.unshift(["Original", earlier[0].lengths]);
   // the axis goes down to the decade of the smallest share, so that a single very long
   // declaration still shows
   const least = Math.min(...sides.flatMap(([, l]) => l.filter(v => v > 0).map(v => 100 * v / sum(l))));
   const lbox = document.getElementById("c-lengths");
   lbox.hidden = false;
   const pair = lbox.querySelector(".pair");
+  pair.classList.toggle("three", sides.length === 3); pair.classList.toggle("four", sides.length === 4);
   pair.innerHTML = sides.map(([label, l]) => `<figure><figcaption>${label}</figcaption><div class="chart small"><canvas></canvas></div>` +
     `<div class="note">${full.format(sum(l))} declarations; the longest bin: ${BINS[l.findLastIndex(x => x > 0)]} code lines*</div></figure>`).join("");
   pair.querySelectorAll("canvas").forEach((canvas, k) => {
@@ -1139,9 +1146,10 @@ function drawMatrix(canvas, g, shade) {
 const loadGraph = () => Promise.all([
   fetch("graph.json?t=" + Date.now(), { cache: "no-store" }).then(r => r.json()),
   mathlib ? mathlib : fetch("mathlib.json").then(r => r.json()).catch(() => null),
-]).then(([g, ml]) => {
-  const fresh = g.now?.sha !== graph?.now?.sha || (ml && !mathlib);
-  graph = g; mathlib = ml;
+  graphEarlier ? graphEarlier : fetch("graph-earlier.json").then(r => r.json()).catch(() => null),
+]).then(([g, ml, ge]) => {
+  const fresh = g.now?.sha !== graph?.now?.sha || (ml && !mathlib) || (ge && !graphEarlier);
+  graph = g; mathlib = ml; graphEarlier = ge;
   if (fresh) { renderGraph(); renderCompare(); }
 }).catch(() => {});
 

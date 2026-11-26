@@ -27,7 +27,9 @@ env:
   SOURCE: https://github.com/leanprover-community/riemann-hypothesis
   # The earlier history, before main was replaced on 2026-11-25 (by the readable edition of
   # grh-lean): main up to this commit, still on the branch alpoge. The page shows it before main
-  # (site/earlier.json, measured again only when collect.py's VERSION changes).
+  # (site/earlier.json, measured again only when collect.py's VERSION changes), and the import
+  # graph of its first commit, the original (site/graph-earlier.json, again only when graph.py's
+  # VERSION changes).
   EARLIER: 756a70250dcba9162b99d4ea35c186558434c17e
   # Up to three attempts, for brief network failures.
   RETRY: 'retry() { for i in 1 2 3; do "$@" && return 0; echo "attempt $i failed: $*" >&2; sleep 15; done; return 1; }'
@@ -78,8 +80,11 @@ jobs:
             rm -f site/graph.json; graph=stale
           fi
           echo "import graph: $graph"
+          graph_earlier=$(python3 -c 'import json, sys; sys.exit(json.load(open("site/graph-earlier.json")).get("version") != int(sys.argv[1]))' "$gv" 2>/dev/null && echo current || echo stale)
+          echo "import graph of the original: $graph_earlier"
+          echo "graph_earlier=$graph_earlier" >> "$GITHUB_OUTPUT"
           echo "graph=$graph" >> "$GITHUB_OUTPUT"
-          echo "new=$([ "$head" != "$last" ] || [ "$graph" = stale ] || [ "$earlier" = stale ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "new=$([ "$head" != "$last" ] || [ "$graph" = stale ] || [ "$earlier" = stale ] || [ "$graph_earlier" = stale ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
       # numpy for graph.py, Pillow for card.py
       - name: Python packages
@@ -96,9 +101,15 @@ jobs:
           clone() { rm -rf "$RUNNER_TEMP/source.git"; git clone --quiet --bare --single-branch --branch main "$SOURCE" "$RUNNER_TEMP/source.git"; }
           retry clone
           "$RUNNER_TEMP/venv/bin/python" collect.py "$RUNNER_TEMP/source.git" site/data.json
-          if [ "${{ steps.check.outputs.earlier }}" = stale ]; then
+          if [ "${{ steps.check.outputs.earlier }}" = stale ] || [ "${{ steps.check.outputs.graph_earlier }}" = stale ]; then
             retry git -C "$RUNNER_TEMP/source.git" fetch --quiet "$SOURCE" "$EARLIER"
+          fi
+          if [ "${{ steps.check.outputs.earlier }}" = stale ]; then
             "$RUNNER_TEMP/venv/bin/python" collect.py "$RUNNER_TEMP/source.git" site/earlier.json --ref "$EARLIER"
+          fi
+          if [ "${{ steps.check.outputs.graph_earlier }}" = stale ]; then
+            original=$(git -C "$RUNNER_TEMP/source.git" rev-list --first-parent "$EARLIER" | tail -1)
+            "$RUNNER_TEMP/venv/bin/python" graph.py "$RUNNER_TEMP/source.git" site/graph-earlier.json --ref "$original" --only
           fi
 
       - name: Commit data
@@ -108,11 +119,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           # GitHub disables scheduled workflows after 60 days without repository activity.
-          if git diff --quiet site/data.json site/earlier.json && [ $(( $(date +%s) - $(git log -1 --format=%ct) )) -gt 2592000 ]; then
+          if git diff --quiet site/data.json site/earlier.json site/graph-earlier.json && [ $(( $(date +%s) - $(git log -1 --format=%ct) )) -gt 2592000 ]; then
             date -u +%FT%TZ > .heartbeat
             git add .heartbeat
           fi
-          git add site/data.json site/earlier.json
+          git add site/data.json site/earlier.json site/graph-earlier.json
           if git diff --cached --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
