@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 """Measure the Lean source of every first-parent commit of a git repository.
 
-Usage: collect.py REPO DATA [--ref main] [--prefix src/]
+Usage: collect.py REPO DATA [--ref main] [--prefix FOLDER/]
 
-REPO is a (bare) clone; DATA is the JSON file the site reads. Commits already in
-DATA are skipped (all are measured again when DATA has another VERSION).
-Statistics are computed once per blob, so consecutive commits cost only the
-files they changed.
+REPO is a (bare) clone; DATA is the JSON file the site reads. It always holds the first-parent
+history of REF as it is now: commits a force push removed are dropped, commits already in DATA
+are kept (all are measured again when DATA has another VERSION).
+
+Measured are the .lean files in the source folder of each commit: the srcDir of the Lake package
+at the top of the repository (lakefile.toml or lakefile.lean), so that moving the source does not
+break the counts; --prefix fixes the folder instead. Commits without such a package, or without
+.lean files in it, are left out.
+
+Statistics are computed once per blob, so consecutive commits cost only the files they changed.
 """
 import argparse
 import bisect
@@ -15,6 +21,7 @@ import hashlib
 import json
 import multiprocessing
 import os
+import posixpath
 import re
 import subprocess
 import sys
@@ -25,7 +32,8 @@ import threading
 # 4: finer declaration lengths.
 # 5: code lines without the file header (imports, module, prelude).
 # 6: only imports of the project's own modules.
-VERSION = 6
+# 7: the source folder from the lakefile (was always src/); commits without one left out.
+VERSION = 7
 STAT_KEYS = ("bytes", "lines", "code", "theorems", "defs", "imports", "heartbeats", "arith",
              "statements")
 # Declaration lengths in code lines: bin k holds LENGTH_EDGES[k] up to the next edge (exclusive);
@@ -182,20 +190,59 @@ def git(repo, *args, **kw):
     ).stdout
 
 
-def lean_blobs(repo, sha, prefix):
-    """(folder, blob id) of each .lean file under prefix; the folder is the first one below
-    prefix, "" for files directly in it."""
+# srcDir of the package, not of a lean_lib or lean_exe: in lakefile.toml before the first table,
+# in lakefile.lean before the first target.
+SRC_DIR = {
+    "lakefile.toml": (re.compile(rb"^\[", re.M), re.compile(rb'^[ \t]*srcDir[ \t]*=[ \t]*"([^"]*)"', re.M)),
+    "lakefile.lean": (re.compile(rb"^[ \t]*(?:@\[[^\]\n]*\][ \t]*)?(?:lean_lib|lean_exe|target|extern_lib|input_file|input_dir)\b", re.M),
+                      re.compile(rb'\bsrcDir[ \t]*:=[ \t]*"([^"]*)"')),
+}
+
+
+def source_dir(repo, sha):
+    """The folder of the Lean source of the commit, as a prefix ("src/"; "" for the top): the
+    srcDir of the Lake package at the top of the repository. None without a lakefile there or
+    with a srcDir outside the repository."""
+    files = git(repo, "ls-tree", "--name-only", sha).decode().split("\n")
+    for name, (end, src_dir) in SRC_DIR.items():
+        if name in files:
+            text = git(repo, "cat-file", "blob", f"{sha}:{name}")
+            cut = end.search(text)
+            m = src_dir.search(text, 0, cut.start() if cut else len(text))
+            d = posixpath.normpath(m.group(1).decode()) if m else "."
+            if d == ".." or d.startswith("../") or d.startswith("/"):
+                return None
+            return "" if d == "." else d + "/"
+    return None
+
+
+def lean_files(repo, sha, prefix):
+    """(path, blob id) of each .lean file under prefix, the lakefile aside."""
     out = git(repo, "ls-tree", "-r", "-z", "--full-tree", sha, "--", prefix)
-    blobs = []
+    files = []
     for entry in out.split(b"\0"):
         if not entry:
             continue
         meta, path = entry.split(b"\t", 1)
         _, kind, blob = meta.split()
-        if kind == b"blob" and path.endswith(b".lean"):
-            rest = path.decode()[len(prefix):]
-            blobs.append((rest.split("/")[0] if "/" in rest else "", blob.decode()))
+        if kind == b"blob" and path.endswith(b".lean") and path != b"lakefile.lean":
+            files.append((path.decode(), blob.decode()))
+    return files
+
+
+def lean_blobs(repo, sha, prefix):
+    """(folder, blob id) of each .lean file under prefix; the folder is the first one below
+    prefix, "" for files directly in it."""
+    blobs = []
+    for path, blob in lean_files(repo, sha, prefix):
+        rest = path[len(prefix):]
+        blobs.append((rest.split("/")[0] if "/" in rest else "", blob))
     return blobs
+
+
+# Consecutive commits whose code lines differ by more than this factor are reported: most likely
+# the source moved where the measurement does not follow it.
+JUMP = 1.5
 
 
 def read_blobs(repo, blobs):
@@ -231,7 +278,8 @@ def main():
     ap.add_argument("repo")
     ap.add_argument("data")
     ap.add_argument("--ref", default="main")
-    ap.add_argument("--prefix", default="src/")
+    ap.add_argument("--prefix", help="the folder to measure in every commit, e.g. src/ "
+                    "(default: the srcDir of each commit's lakefile)")
     args = ap.parse_args()
 
     data = {"commits": []}
@@ -241,14 +289,19 @@ def main():
     if data.get("version") != VERSION:
         data = {"version": VERSION, "commits": []}
     data["length_edges"] = LENGTH_EDGES
-    known = {c["sha"] for c in data["commits"]}
+    known = {c["sha"]: c for c in data["commits"]}
 
     cache = {}
 
     log = git(args.repo, "log", "--first-parent", "--reverse",
               "--format=%H%x00%cI%x00%s", args.ref).decode()
-    new = [l.split("\0") for l in log.splitlines()]
-    new = [c for c in new if c[0] not in known]
+    history = [l.split("\0") for l in log.splitlines()]
+    new = [c for c in history if c[0] not in known]
+    on_ref = {c[0] for c in history}
+    gone = sum(sha not in on_ref for sha in known)
+    if gone:
+        print(f"::warning::{gone} measured commit(s) are no longer on {args.ref} "
+              "(a force push?): dropped", file=sys.stderr)
     print(f"{len(new)} new commit(s)", file=sys.stderr)
 
     pool = multiprocessing.Pool()  # files are measured on all cores
@@ -260,8 +313,17 @@ def main():
     totals = np.zeros(width, dtype=np.int64)
     code = STAT_KEYS.index("code")
     dirs, dir_files = collections.Counter(), collections.Counter()
+    measured, source = {}, None
     for sha, date, subject in new:
-        files = lean_blobs(args.repo, sha, args.prefix)
+        prefix = args.prefix if args.prefix is not None else source_dir(args.repo, sha)
+        files = lean_blobs(args.repo, sha, prefix) if prefix is not None else []
+        if not files:
+            print(f"{sha[:8]} left out: no Lake package at the top or no .lean files in it",
+                  file=sys.stderr)
+            continue
+        if prefix != source:
+            print(f"{sha[:8]} source folder: {prefix or '(top)'}", file=sys.stderr)
+            source = prefix
         blobs = [b for _, b in files]
         missing = sorted(set(blobs) - cache.keys())
         for blob, (counts, hashes) in pool.imap_unordered(stats_of, read_blobs(args.repo, missing), chunksize=64):
@@ -282,16 +344,23 @@ def main():
         present = now
         pr = re.match(r"Merge pull request #(\d+)", subject)
         entry = {"sha": sha, "date": date, "subject": subject,
-                 "pr": int(pr.group(1)) if pr else None, "files": len(blobs)}
+                 "pr": int(pr.group(1)) if pr else None, "source": prefix, "files": len(blobs)}
         entry.update(zip(STAT_KEYS, totals.tolist()))
         entry["lengths"] = totals[len(STAT_KEYS):].tolist()
         entry["repeats"] = sum(statements.values()) - len(statements)
         entry["dirs"] = dict(sorted(dirs.items()))
-        data["commits"].append(entry)
+        measured[sha] = entry
         print(f"{sha[:8]} {entry['lines']:>10} lines {len(missing):>6} new blobs",
               file=sys.stderr)
 
     pool.close()
+    data["commits"] = [known.get(sha) or measured[sha] for sha, _, _ in history
+                       if sha in known or sha in measured]
+    commits = data["commits"]
+    for a, b in zip(commits, commits[1:]):
+        if b["sha"] in measured and not a["code"] / JUMP <= b["code"] <= a["code"] * JUMP:
+            print(f"::warning::code lines {a['code']} -> {b['code']} at {b['sha'][:8]} "
+                  f"({b['subject'][:60]}): has the source moved?", file=sys.stderr)
     with open(args.data, "w") as f:
         json.dump(data, f, separators=(",", ":"))
         f.write("\n")

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """The import graph of the Lean modules of a commit, for the modularity pictures of the site.
 
-Usage: graph.py REPO OUT.json [--ref main] [--prefix src/] [--package NAME.] [--only] [--reuse OLD.json]
+Usage: graph.py REPO OUT.json [--ref main] [--prefix FOLDER/] [--package NAME.] [--only] [--reuse OLD.json]
 
-Writes, for the first first-parent commit ("original") and the last one ("now"):
+Writes, for the first first-parent commit that collect.py measures ("original") and the last one
+("now"), with the source folder found as collect.py finds it (or --prefix):
 - matrix: imports between modules, the modules in path order (so grouped by folder), counted
   in BINS x BINS cells;
 - build: an ideal build on as many cores as needed, each module starting as soon as the modules
@@ -26,11 +27,12 @@ import time
 
 import numpy as np
 
-from collect import blob_stats, code_lines, git, header, lean_blobs, read_blobs, summary as text_summary, without_comments
+from collect import (blob_stats, code_lines, git, header, lean_blobs, lean_files, read_blobs, source_dir,
+                     summary as text_summary, without_comments)
 
 IMPORT_LINE = re.compile(
     rb"^(?:public[ \t]+)?(?:meta[ \t]+)?import[ \t]+(?:all[ \t]+)?([^\n]*)", re.M)
-VERSION = 6  # of the output; the workflow computes it again when this changes
+VERSION = 7  # of the output; the workflow computes it again when this changes
 BINS = 160
 SAMPLES = 300
 
@@ -38,15 +40,8 @@ SAMPLES = 300
 def modules(repo, sha, prefix, package=""):
     """Module names below prefix (path order), the project modules each imports (indices) and
     the code lines of each; imports name a module as package + its name."""
-    out = git(repo, "ls-tree", "-r", "-z", "--full-tree", sha, "--", prefix)
-    paths, blobs = [], []
-    for entry in out.split(b"\0"):
-        if entry:
-            meta, path = entry.split(b"\t", 1)
-            _, kind, blob = meta.split()
-            if kind == b"blob" and path.endswith(b".lean"):
-                paths.append(path.decode())
-                blobs.append(blob.decode())
+    files = lean_files(repo, sha, prefix)
+    paths, blobs = [p for p, _ in files], [b for _, b in files]
     order = sorted(range(len(paths)), key=lambda i: paths[i])
     paths = [paths[i] for i in order]
     blobs = [blobs[i] for i in order]
@@ -171,7 +166,8 @@ def main():
     ap.add_argument("repo")
     ap.add_argument("out")
     ap.add_argument("--ref", default="main")
-    ap.add_argument("--prefix", default="src/")
+    ap.add_argument("--prefix", help="the folder to read in every commit, e.g. Mathlib/ "
+                    "(default: the srcDir of each commit's lakefile, as in collect.py)")
     ap.add_argument("--package", default="")
     ap.add_argument("--only", action="store_true")
     ap.add_argument("--reuse")
@@ -185,14 +181,25 @@ def main():
                 old = json.load(f)
         except (OSError, ValueError):
             pass
-    for key, sha in (("now", shas[-1]),) if args.only else (("original", shas[0]), ("now", shas[-1])):
+    def prefix(sha):
+        return args.prefix if args.prefix is not None else source_dir(args.repo, sha)
+
+    # the commits collect.py measures: with a source folder holding .lean files
+    def measured(sha):
+        p = prefix(sha)
+        return p is not None and bool(lean_files(args.repo, sha, p))
+
+    first = next((sha for sha in shas if measured(sha)), None)
+    if first is None or not measured(shas[-1]):
+        sys.exit("no Lean source in the first or the last commit")
+    for key, sha in (("now", shas[-1]),) if args.only else (("original", first), ("now", shas[-1])):
         if key == "original" and old.get("version") == VERSION and old.get("original", {}).get("sha") == sha:
             result[key] = old["original"]
             continue
-        names, imports, cost = modules(args.repo, sha, args.prefix, args.package)
+        names, imports, cost = modules(args.repo, sha, prefix(sha), args.package)
         result[key] = {"sha": sha, **summary(names, imports, cost)}
         if args.only:
-            blobs = [b for _, b in lean_blobs(args.repo, sha, args.prefix)]
+            blobs = [b for _, b in lean_blobs(args.repo, sha, prefix(sha))]
             result[key]["text"] = text_summary([blob_stats(t) for _, t in read_blobs(args.repo, blobs)])
     with open(args.out, "w") as f:
         json.dump(result, f, separators=(",", ":"))

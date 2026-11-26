@@ -242,16 +242,21 @@ footer {
     regular expressions, over the <code>.lean</code> files as stored in git
     (<a href="https://github.com/rh-shrink/rh-shrink.github.io/blob/main/collect.py">collect.py</a>).
     Lean is never run and nothing is elaborated.</p>
-    <p>There is one data point per commit on <code>main</code>; a merged pull request counts as one
-    commit, not as the commits it contains. A GitHub Action checks for new commits every 15 minutes.</p>
+    <p>There is one data point per commit on <code>main</code> as it is now (commits a force push
+    removed are left out); a merged pull request counts as one commit, not as the commits it
+    contains. A GitHub Action checks for new commits every 15 minutes. The original is the first
+    commit with Lean source: on Nov 25, 2026, <code>main</code> was replaced by the readable edition
+    of the proof, and starts there (the earlier history is on the
+    <a href="https://github.com/leanprover-community/riemann-hypothesis/tree/alpoge"><code>alpoge</code></a> branch).</p>
     <dl>
-      <dt>Total lines</dt><dd>lines of the <code>.lean</code> files under <code>src/</code>, including blank lines and comments</dd>
+      <dt>Source folder</dt><dd>the folder the lakefile names as <code>srcDir</code>, now <code class="srcdir">src/</code>; if it moves, the counts follow it</dd>
+      <dt>Total lines</dt><dd>lines of the <code>.lean</code> files in the source folder, including blank lines and comments</dd>
       <dt>Code lines*</dt><dd>total lines, without blank lines, lines that are only comments (<code>--</code>, nested <code>/- -/</code>) and the imports at the top of each file (with its <code>module</code> line)</dd>
       <dt>Theorems</dt><dd>code lines* starting with <code>theorem</code> or <code>lemma</code>, also after attributes and modifiers such as <code>@[simp] private</code></dd>
       <dt>Other declarations</dt><dd>code lines* starting with <code>def</code>, <code>abbrev</code>, <code>instance</code>, <code>structure</code>, <code>inductive</code>, <code>class</code>, <code>opaque</code> or <code>axiom</code>, likewise</dd>
       <dt>Declarations</dt><dd>theorems and other declarations</dd>
-      <dt>Files</dt><dd><code>.lean</code> files under <code>src/</code></dd>
-      <dt>Folders</dt><dd>the folders directly in <code>src/</code>, each with everything below it; the files directly in <code>src/</code> are one more group</dd>
+      <dt>Files</dt><dd><code>.lean</code> files in the source folder</dd>
+      <dt>Folders</dt><dd>the folders directly in the source folder, each with everything below it; the files directly in it are one more group</dd>
       <dt>Import statements**</dt><dd><code>import</code> statements (also <code>public import</code>, <code>meta import</code>) of the project's own files, counted as lines starting with one, assuming the usual one import per line; imports of Mathlib, Lean and other dependencies are left out</dd>
       <dt>Repeated theorem statements</dt><dd>theorems and lemmas whose statement (from after the name up to <code>:=</code>, white space aside, at least 30 characters) is word for word that of another theorem, counting the copies beyond the first. The same text can mean different things in different namespaces, which is why Mathlib has some too</dd>
       <dt>maxHeartbeats overrides</dt><dd><code>set_option maxHeartbeats</code>, which gives a proof more time than Lean's default</dd>
@@ -648,6 +653,9 @@ function render() {
 
   const first = commits[0], last = commits[commits.length - 1];
   const xs = commits.map(c => Date.parse(c.date));
+  // the source folder (the lakefile's srcDir), "" for the top of the repository
+  const srcName = c => c.source === "" ? "the top folder" : c.source || "src/";
+  document.querySelectorAll(".srcdir").forEach(e => e.textContent = srcName(last));
 
   document.getElementById("hero").textContent = (100 * last.code / first.code).toFixed(1) + "%";
   document.getElementById("updated").innerHTML = ` · last commit <time datetime="${last.date}">${fmtDate(last.date)}</time>`;
@@ -744,7 +752,7 @@ function render() {
         : !now(n) ? `removed, originally ${compact.format(was(n))}`
         : `${compact.format(now(n))} · ` + (d === 0 ? "unchanged"
           : `<span class="arrow">${d < 0 ? "↓" : "↑"}</span> ${Math.abs(100 * d / was(n)).toFixed(1)}%`);
-      return `<span class="name">${n ? escapeHtml(n) : "files directly in src/"}</span>
+      return `<span class="name">${n ? escapeHtml(n) : `files directly in ${escapeHtml(srcName(last))}`}</span>
         <span class="bar" title="now ${full.format(now(n))}, originally ${full.format(was(n))}"><i class="orig" style="width:${pct(was(n))}"></i><i class="now" style="width:${pct(now(n))}"></i>${now(n) > was(n) && was(n) > top / 100 ? `<i class="mark" style="left:${pct(was(n))}"></i>` : ""}</span>
         <span class="num">${num}</span>`;
     }).join("");
@@ -799,7 +807,7 @@ function render() {
   const rows = commits.slice().reverse().map((c, i, arr) => {
     const prev = arr[i + 1];
     const unchanged = prev && ["bytes", "files", "lines"].every(k => c[k] === prev[k]);
-    return `<tr${unchanged ? ' class="unchanged" title="No change in src/"' : ""}><td><a href="${commitUrl(c)}">${commitLabel(c)}</a></td>
+    return `<tr${unchanged ? ` class="unchanged" title="No change in ${escapeHtml(srcName(c))}"` : ""}><td><a href="${commitUrl(c)}">${commitLabel(c)}</a></td>
       <td class="subject" title="${escapeHtml(c.subject)}">${escapeHtml(c.subject)}</td>
       <td>${fmtDate(c.date)}</td><td>${full.format(c.code)}</td>
       <td>${prev ? signed(c.code - prev.code, v => full.format(v)) : ""}</td><td>${full.format(c.lines)}</td>
