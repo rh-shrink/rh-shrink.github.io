@@ -890,9 +890,11 @@ function renderGraph() {
   graphCharts.forEach(c => c.destroy());
   graphCharts = [];
   if (!graph?.original || !graph?.now) return;
+  // with the original: it and Mathlib in the first row, the readable edition and now below
   const sides = [["Readable edition", graph.original], ["Now", graph.now]];
-  if (graphEarlier?.now && graphEarlier.version === graph.version) sides.unshift(["Original", graphEarlier.now]);
   if (mathlib?.now) sides.push([`Mathlib, for comparison`, mathlib.now]);
+  if (graphEarlier?.now && graphEarlier.version === graph.version)
+    sides.unshift(["Original", graphEarlier.now], ...(mathlib?.now ? sides.splice(2, 1) : []));
   const columns = box => { box.classList.toggle("three", sides.length === 3); box.classList.toggle("four", sides.length === 4); };
   const blue = css("--m-lines"), muted = css("--text-muted"), grid = css("--grid");
   const pair = (id, note) => {
@@ -1063,7 +1065,7 @@ function renderCompare() {
   const E = lengthEdges;
   const BINS = E.map((e, i) => (i === E.length - 1 ? `${e}+` : E[i + 1] - e === 1 ? `${e}` : `${e}–${E[i + 1] - 1}`));
   const sides = [["Readable edition", first.lengths], ["Now", last.lengths], ["Mathlib, for comparison", ml.lengths]];
-  if (earlier.length) sides.unshift(["Original", earlier[0].lengths]);
+  if (earlier.length) sides.unshift(["Original", earlier[0].lengths], ...sides.splice(2, 1));  // as in renderGraph
   // the axis goes down to the decade of the smallest share, so that a single very long
   // declaration still shows
   const least = Math.min(...sides.flatMap(([, l]) => l.filter(v => v > 0).map(v => 100 * v / sum(l))));
