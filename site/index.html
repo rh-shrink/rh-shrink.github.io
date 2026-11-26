@@ -112,6 +112,7 @@ th { color: var(--text-secondary); font-weight: 500; white-space: normal; vertic
 th:nth-child(-n+2), td:nth-child(-n+2) { text-align: left; }
 td.subject { max-width: 380px; overflow: hidden; text-overflow: ellipsis; }
 tr.unchanged td, tr.unchanged a { color: var(--text-muted); }
+tr.jump td { color: var(--text-secondary); white-space: normal; padding-top: 14px; padding-bottom: 14px; }
 /* The commit column stays while the table scrolls sideways (narrow screens). */
 th:first-child, td:first-child { position: sticky; left: 0; background: var(--surface-1); }
 .folders { display: grid; grid-template-columns: max-content 1fr max-content; gap: 8px 14px; align-items: center; font-size: 13px; }
@@ -206,7 +207,7 @@ footer {
 
   <details class="card" id="folders-card" hidden>
     <summary>Code lines* by folder</summary>
-    <div class="legend"><span><i class="solid" style="background:var(--m-lines)"></i>Now</span><span><i class="tint"></i>Originally</span></div>
+    <div class="legend"><span><i class="solid" style="background:var(--m-lines)"></i>Now</span><span><i class="tint"></i>Readable edition</span></div>
     <div class="folders" id="folders"></div>
   </details>
 
@@ -231,8 +232,8 @@ footer {
 
   <section class="card" id="c-compare" hidden>
     <h2>Compared with Mathlib</h2>
-    <p class="hint">How many times as frequent as in Mathlib (Mathlib = 1×, the solid line; log scale), originally and now.</p>
-    <div class="legend"><span><i class="solid" style="background:var(--m-lines);opacity:.45"></i>Originally</span><span><i class="solid" style="background:var(--m-lines)"></i>Now</span></div>
+    <p class="hint">How many times as frequent as in Mathlib (Mathlib = 1×, the solid line; log scale), in the readable edition (the start of <code>main</code> since Nov 25) and now.</p>
+    <div class="legend"><span><i class="solid" style="background:var(--m-lines);opacity:.45"></i>Readable edition</span><span><i class="solid" style="background:var(--m-lines)"></i>Now</span></div>
     <div class="chart compare"><canvas></canvas></div>
   </section>
 
@@ -242,12 +243,14 @@ footer {
     regular expressions, over the <code>.lean</code> files as stored in git
     (<a href="https://github.com/rh-shrink/rh-shrink.github.io/blob/main/collect.py">collect.py</a>).
     Lean is never run and nothing is elaborated.</p>
-    <p>There is one data point per commit on <code>main</code> as it is now (commits a force push
-    removed are left out); a merged pull request counts as one commit, not as the commits it
-    contains. A GitHub Action checks for new commits every 15 minutes. The original is the first
-    commit with Lean source: on Nov 25, 2026, <code>main</code> was replaced by the readable edition
-    of the proof, and starts there (the earlier history is on the
-    <a href="https://github.com/leanprover-community/riemann-hypothesis/tree/alpoge"><code>alpoge</code></a> branch).</p>
+    <p>There is one data point per commit on <code>main</code>; a merged pull request counts as one
+    commit, not as the commits it contains. A GitHub Action checks for new commits every 15 minutes.
+    On Nov 25, 2026, <code>main</code> was replaced by the readable edition of the proof
+    (<a href="https://github.com/lsernau/grh-lean">grh-lean</a>); the arrow in the charts marks
+    this. Before it come the commits of <code>main</code> up to then, which go on in the branch
+    <a href="https://github.com/leanprover-community/riemann-hypothesis/tree/alpoge"><code>alpoge</code></a>.
+    The original is the first of them, the proof as published; the charts over time have log
+    scales, so that both fit.</p>
     <dl>
       <dt>Source folder</dt><dd>the folder the lakefile names as <code>srcDir</code>, now <code class="srcdir">src/</code>; if it moves, the counts follow it</dd>
       <dt>Total lines</dt><dd>lines of the <code>.lean</code> files in the source folder, including blank lines and comments</dd>
@@ -323,7 +326,15 @@ const commitLabel = c => (c.pr ? `#${c.pr}` : c.sha.slice(0, 7));
 const commitUrl = c => (c.pr ? `${REPO}/pull/${c.pr}` : `${REPO}/commit/${c.sha}`);
 const escapeHtml = s => s.replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
 
-let commits = [], charts = [];
+// commits: main since it was replaced by the readable edition; earlier: main before that
+// (earlier.json, empty when missing or of another version); series: both, for the charts over time.
+let commits = [], earlier = [], series = [], charts = [];
+// What the headline, the tiles and the chart relative to the original compare with: the first
+// commit of the earlier history (the proof as published), or with false that of main now.
+const FROM_EARLIER = true;
+// The arrow at the jump from the earlier history to main now.
+const JUMP_LABEL = [{ text: "Nov 25: main replaced by the readable edition of grh-lean; the earlier work goes on in the branch" }, { code: "alpoge" }];
+const JUMP_SHORT = [{ text: "main replaced (Nov 25)" }];
 
 // Popups are HTML: hovering shows one, a click (or tap) on a chart pins it, and only the pinned
 // box is a link to the commit. A click anywhere else closes it.
@@ -406,7 +417,7 @@ Chart.Interaction.modes.nearLine = (chart, e) => {
 
 // The commit behind data index i; the bar chart sets its own lookup (not in options: Chart.js
 // would call a function there as a scriptable option).
-const commitAt = (chart, i) => (chart.$commitAt ? chart.$commitAt(i) : commits[i]);
+const commitAt = (chart, i) => (chart.$commitAt ? chart.$commitAt(i) : series[i]);
 
 function pinTip(e, els, chart) {
   unpin();
@@ -484,7 +495,18 @@ const overlay = {
       const top = Math.max(a.top, chart.scales.y.getPixelForValue(mk.y) - 16);
       ctx.beginPath(); ctx.moveTo(px - 5, top); ctx.lineTo(px + 5, top); ctx.lineTo(px, top + 7);
       ctx.closePath(); ctx.fill();
-      drawLabel(ctx, mk.label, px, top, a);
+      drawLabel(ctx, mk.label, px, top, a, true);
+    }
+    // the jump: an arrow down beside the drop, its label just above the tip, on the side with
+    // more room (left of the arrow, below the earlier lines, while the jump is far right)
+    const j = chart.options.jump_;
+    if (j) {
+      const px = x.getPixelForValue(j.x) + 9, y = chart.scales.y;
+      const y0 = y.getPixelForValue(j.from) + 4, y1 = y.getPixelForValue(j.to) - 6;
+      ctx.strokeStyle = ctx.fillStyle = css("--text-secondary"); ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(px, y0); ctx.lineTo(px, y1 - 6); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(px - 5, y1 - 7); ctx.lineTo(px + 5, y1 - 7); ctx.lineTo(px, y1); ctx.closePath(); ctx.fill();
+      drawLabel(ctx, j.label, px, y1 - 28, a, true);
     }
     ctx.restore();
     if (pinned?.chart !== chart || chart.config.type !== "line") return;
@@ -499,8 +521,9 @@ const overlay = {
 };
 
 // The label of a mark: words of text and of code (monospace on a light box, like inline code),
-// wrapped to fit the chart, beside the triangle at (px, top).
-function drawLabel(ctx, label, px, top, a) {
+// wrapped to fit the chart, beside the triangle at (px, top); with up, further lines go above the
+// first, not below.
+function drawLabel(ctx, label, px, top, a, up = false) {
   const sans = "11px " + Chart.defaults.font.family, mono = "10.5px ui-monospace, SFMono-Regular, Menlo, monospace";
   const words = [];
   for (const seg of label) {
@@ -524,7 +547,7 @@ function drawLabel(ctx, label, px, top, a) {
   lines.forEach((line, k) => {
     const width = line.reduce((t, w) => t + w.width, 0) + space * (line.length - 1);
     let x = right ? px - 8 - width : px + 8;
-    const y = top + 9 + 15 * k;
+    const y = top + 9 + 15 * (up ? k - lines.length + 1 : k);
     for (const w of line) {
       if (w.code) {
         ctx.fillStyle = css("--grid");
@@ -593,7 +616,7 @@ window.visualViewport?.addEventListener("resize", () => {
 });
 
 function baseOptions(yTicks) {
-  const xs = commits.map(c => Date.parse(c.date));
+  const xs = series.map(c => Date.parse(c.date));
   const muted = css("--text-muted"), grid = css("--grid");
   return {
     maintainAspectRatio: false, animation: false, devicePixelRatio: sharpness(),
@@ -620,9 +643,42 @@ function baseOptions(yTicks) {
   };
 }
 
+// A log scale from a power of ten below the smallest value to some way above the largest (room
+// for the marks), with ticks at 1, 2 and 5 times a power of ten (Chart.js's own log ticks crowd).
+// Zero, which a log scale has not, goes on a tick "0" a power of ten further down. Returns where
+// to plot a value.
+function logScale(opts, values, fmt, headroom = 1.6) {
+  const pos = values.filter(v => v > 0);
+  let min = 10 ** Math.floor(Math.log10(Math.min(...pos)));
+  const zero = values.some(v => v === 0) ? (min /= 10) : null, max = Math.max(...pos) * headroom;
+  Object.assign(opts.scales.y, { type: "logarithmic", min, max });
+  opts.scales.y.afterBuildTicks = scale => {
+    const ticks = [];
+    for (let p = min; p <= max; p *= 10)
+      for (const f of p === zero ? [1] : [1, 2, 5]) if (f * p <= max) ticks.push({ value: f * p });
+    scale.ticks = ticks.length > 7 ? ticks.filter(t => String(t.value).match(/^1|^0\.0*1/)) : ticks;
+  };
+  opts.scales.y.ticks.callback = v => (v === zero ? "0" : fmt(v));
+  return v => (v > 0 ? v : zero);
+}
+
+// The jump arrow of a chart over the series, from the highest of these values before the jump
+// to the highest after it; none without an earlier history, or for a drop to more than a tenth
+// (there the dashed step says enough).
+function jumpMark(opts, keys, label) {
+  const k = earlier.length;
+  if (!k || !commits.length) return;
+  const top = c => Math.max(...keys.map(f => f(c)));
+  const from = top(series[k - 1]), to = top(series[k]);
+  if (from >= 10 * to) opts.jump_ = { x: Date.parse(series[k].date), from, to, label };
+}
+
 function lineDataset(m, values, fill) {
   const color = css(m.color);
+  const k = earlier.length;
   return {
+    // the drop from the earlier history to main now: dashed
+    segment: { borderDash: ctx => (k && ctx.p1DataIndex === k ? [3, 3] : undefined) },
     label: m.label, data: values, borderColor: color, backgroundColor: color, borderWidth: 2, $color: color,
     // A dot at every commit, also where the numbers do not change.
     stepped: "before", pointRadius: 2, pointHoverRadius: 5, pointStyle: "circle",
@@ -651,8 +707,11 @@ function render() {
   Chart.defaults.font.size = 12;
   Chart.defaults.color = css("--text-secondary");
 
-  const first = commits[0], last = commits[commits.length - 1];
-  const xs = commits.map(c => Date.parse(c.date));
+  // first: what the headline, the tiles and the relative chart compare with; start: the start
+  // of main now (the folders)
+  const first = FROM_EARLIER && earlier.length ? earlier[0] : commits[0], start = commits[0];
+  const last = commits[commits.length - 1];
+  const xs = series.map(c => Date.parse(c.date));
   // the source folder (the lakefile's srcDir), "" for the top of the repository
   const srcName = c => c.source === "" ? "the top folder" : c.source || "src/";
   document.querySelectorAll(".srcdir").forEach(e => e.textContent = srcName(last));
@@ -678,12 +737,10 @@ function render() {
   document.getElementById("legend").innerHTML = METRICS.map(m =>
     `<span><i style="background:${css(m.color)}"></i>${m.label}</span>`).join("");
   const idxOpts = baseOptions(v => v + "%");
-  // A fixed 0–100% axis, so that progress shows as the lines sinking; an axis that followed the
-  // data would rescale with every drop and always look the same. Above 100% only if the data
-  // ever grows past a hair (the lines Challenge.lean added are not worth a 110% tick).
-  const pcts = METRICS.flatMap(m => commits.map(c => 100 * c[m.key] / first[m.key]));
-  idxOpts.scales.y.min = 0;
-  idxOpts.scales.y.max = Math.max(100, Math.ceil(Math.max(...pcts) / 10 - 0.01) * 10);
+  // A log axis from a power of ten below the lowest value, at least up to 100%.
+  const pcts = METRICS.flatMap(m => series.map(c => 100 * c[m.key] / first[m.key]));
+  logScale(idxOpts, [...pcts, 100 / 1.6], v => full.format(v) + "%");
+  jumpMark(idxOpts, METRICS.map(m => c => 100 * c[m.key] / first[m.key]), JUMP_LABEL);
   idxOpts.endLabels_ = innerWidth >= 600;
   if (idxOpts.endLabels_) {
     // Room for the longest end label, measured in the font this browser uses.
@@ -693,14 +750,14 @@ function render() {
   }
   idxOpts.plugins.tooltip.callbacks = {
     label: item => {
-      const m = METRICS[item.datasetIndex], c = commits[item.dataIndex];
+      const m = METRICS[item.datasetIndex], c = series[item.dataIndex];
       return `${m.label}: ${item.raw.y.toFixed(1)}%  (${full.format(c[m.key])})`;
     },
-    afterBody: items => commits[items[0].dataIndex].subject,
+    afterBody: items => series[items[0].dataIndex].subject,
   };
   charts.push(new Chart(document.getElementById("chart-index"), {
     type: "line",
-    data: { datasets: METRICS.map(m => lineDataset(m, commits.map((c, i) => ({ x: xs[i], y: 100 * c[m.key] / first[m.key] })), false)) },
+    data: { datasets: METRICS.map(m => lineDataset(m, series.map((c, i) => ({ x: xs[i], y: 100 * c[m.key] / first[m.key] })), false)) },
     options: idxOpts, plugins: [overlay, endLabels],
   }));
 
@@ -713,23 +770,25 @@ function render() {
     `<div class="chart small"><canvas></canvas></div></section>`).join("");
   small.forEach((m, j) => {
     const opts = baseOptions(v => compact.format(v));
-    opts.scales.y.beginAtZero = true;
-    const series = m.series || [m];
+    const lines = m.series || [m];
+    // more room above for the labels of marks
+    const at = logScale(opts, lines.flatMap(s => series.map(c => c[s.key])), v => compact.format(v), m.marks ? 12 : 1.6);
+    jumpMark(opts, lines.map(s => c => at(c[s.key])), JUMP_SHORT);
     opts.marks_ = (m.marks || []).map(mk => {
-      const c = commits.find(c => c.pr === mk.pr);
-      return c && { x: Date.parse(c.date), y: Math.max(...series.map(s => c[s.key])), label: mk.label };
+      const c = series.find(c => c.pr === mk.pr);
+      return c && { x: Date.parse(c.date), y: Math.max(...lines.map(s => c[s.key])), label: mk.label };
     }).filter(Boolean);
     opts.plugins.tooltip.callbacks = {
       label: item => {
-        const s = series[item.datasetIndex];
-        return `${m.series ? s.label + ": " : ""}${full.format(item.raw.y)}  (${(100 * item.raw.y / first[s.key]).toFixed(1)}% of original)`;
+        const s = lines[item.datasetIndex], v = series[item.dataIndex][s.key];
+        return `${m.series ? s.label + ": " : ""}${full.format(v)}  (${(100 * v / first[s.key]).toFixed(1)}% of original)`;
       },
-      afterLabel: item => (item.datasetIndex === 0 && m.sub ? m.sub(commits[item.dataIndex]) : ""),
-      afterBody: items => commits[items[0].dataIndex].subject,
+      afterLabel: item => (item.datasetIndex === 0 && m.sub ? m.sub(series[item.dataIndex]) : ""),
+      afterBody: items => series[items[0].dataIndex].subject,
     };
     charts.push(new Chart(box.querySelectorAll("canvas")[j], {
       type: "line",
-      data: { datasets: series.map((s, k) => lineDataset(s, commits.map((c, i) => ({ x: xs[i], y: c[s.key] })), k === 0)) },
+      data: { datasets: lines.map((s, k) => lineDataset(s, series.map((c, i) => ({ x: xs[i], y: at(c[s.key]) })), k === 0)) },
       options: opts, plugins: [overlay],
     }));
   });
@@ -738,10 +797,10 @@ function render() {
   // big new folder is not at the end). A folder that is gone has only its light bar; a new one
   // only its dark bar; for one that grew, a mark at its original length (unless too short to see).
   const card = document.getElementById("folders-card");
-  card.hidden = !(first.dirs && last.dirs);
+  card.hidden = !(start.dirs && last.dirs);
   if (!card.hidden) {
-    const names = [...new Set([...Object.keys(first.dirs), ...Object.keys(last.dirs)])];
-    const was = n => first.dirs[n] || 0, now = n => last.dirs[n] || 0;
+    const names = [...new Set([...Object.keys(start.dirs), ...Object.keys(last.dirs)])];
+    const was = n => start.dirs[n] || 0, now = n => last.dirs[n] || 0;
     const big = n => Math.max(was(n), now(n));
     names.sort((a, b) => big(b) - big(a) || a.localeCompare(b));
     const top = Math.max(...names.map(n => Math.max(was(n), now(n))));
@@ -749,11 +808,11 @@ function render() {
     document.getElementById("folders").innerHTML = names.map(n => {
       const d = now(n) - was(n);
       const num = !was(n) ? `${compact.format(now(n))} · new`
-        : !now(n) ? `removed, originally ${compact.format(was(n))}`
+        : !now(n) ? `removed, readable edition ${compact.format(was(n))}`
         : `${compact.format(now(n))} · ` + (d === 0 ? "unchanged"
           : `<span class="arrow">${d < 0 ? "↓" : "↑"}</span> ${Math.abs(100 * d / was(n)).toFixed(1)}%`);
       return `<span class="name">${n ? escapeHtml(n) : `files directly in ${escapeHtml(srcName(last))}`}</span>
-        <span class="bar" title="now ${full.format(now(n))}, originally ${full.format(was(n))}"><i class="orig" style="width:${pct(was(n))}"></i><i class="now" style="width:${pct(now(n))}"></i>${now(n) > was(n) && was(n) > top / 100 ? `<i class="mark" style="left:${pct(was(n))}"></i>` : ""}</span>
+        <span class="bar" title="now ${full.format(now(n))}, readable edition ${full.format(was(n))}"><i class="orig" style="width:${pct(was(n))}"></i><i class="now" style="width:${pct(now(n))}"></i>${now(n) > was(n) && was(n) > top / 100 ? `<i class="mark" style="left:${pct(was(n))}"></i>` : ""}</span>
         <span class="num">${num}</span>`;
     }).join("");
   }
@@ -804,10 +863,13 @@ function render() {
   charts[charts.length - 1].$commitAt = i => deltas[i].c;
 
   // Table
-  const rows = commits.slice().reverse().map((c, i, arr) => {
+  const rows = series.slice().reverse().map((c, i, arr) => {
     const prev = arr[i + 1];
+    // above the newest commit of the earlier history: what happened
+    const jump = earlier.length && c === earlier[earlier.length - 1]
+      ? `<tr class="jump"><td colspan="10">↑ Nov 25, 2026: <code>main</code> replaced by the readable edition of grh-lean. Below: <code>main</code> before that; it goes on in the branch <code>alpoge</code>.</td></tr>` : "";
     const unchanged = prev && ["bytes", "files", "lines"].every(k => c[k] === prev[k]);
-    return `<tr${unchanged ? ` class="unchanged" title="No change in ${escapeHtml(srcName(c))}"` : ""}><td><a href="${commitUrl(c)}">${commitLabel(c)}</a></td>
+    return jump + `<tr${unchanged ? ` class="unchanged" title="No change in ${escapeHtml(srcName(c))}"` : ""}><td><a href="${commitUrl(c)}">${commitLabel(c)}</a></td>
       <td class="subject" title="${escapeHtml(c.subject)}">${escapeHtml(c.subject)}</td>
       <td>${fmtDate(c.date)}</td><td>${full.format(c.code)}</td>
       <td>${prev ? signed(c.code - prev.code, v => full.format(v)) : ""}</td><td>${full.format(c.lines)}</td>
@@ -825,7 +887,7 @@ function renderGraph() {
   graphCharts.forEach(c => c.destroy());
   graphCharts = [];
   if (!graph?.original || !graph?.now) return;
-  const sides = [["Originally", graph.original], ["Now", graph.now]];
+  const sides = [["Readable edition", graph.original], ["Now", graph.now]];
   if (mathlib?.now) sides.push([`Mathlib, for comparison`, mathlib.now]);
   const blue = css("--m-lines"), muted = css("--text-muted"), grid = css("--grid");
   const pair = (id, note) => {
@@ -956,7 +1018,7 @@ function renderCompare() {
     backgroundColor: color, borderRadius: 3, borderSkipped: "start", categoryPercentage: 0.55, barPercentage: 0.9 });
   compareCharts.push(new Chart(card.querySelector("canvas"), {
     type: "bar",
-    data: { labels: names, datasets: [bars("Originally", first, blue + "73"), bars("Now", last, blue)] },
+    data: { labels: names, datasets: [bars("Readable edition", first, blue + "73"), bars("Now", last, blue)] },
     options: {
       maintainAspectRatio: false, animation: false, devicePixelRatio: sharpness(),
       events: touch ? ["click"] : ["mousemove", "mouseout", "click"],
@@ -986,7 +1048,7 @@ function renderCompare() {
   // Declarations by length, as shares of each project's declarations (log axis: the long tail)
   const E = lengthEdges;
   const BINS = E.map((e, i) => (i === E.length - 1 ? `${e}+` : E[i + 1] - e === 1 ? `${e}` : `${e}–${E[i + 1] - 1}`));
-  const sides = [["Originally", first.lengths], ["Now", last.lengths], ["Mathlib, for comparison", ml.lengths]];
+  const sides = [["Readable edition", first.lengths], ["Now", last.lengths], ["Mathlib, for comparison", ml.lengths]];
   // the axis goes down to the decade of the smallest share, so that a single very long
   // declaration still shows
   const least = Math.min(...sides.flatMap(([, l]) => l.filter(v => v > 0).map(v => 100 * v / sum(l))));
@@ -1077,16 +1139,23 @@ const loadGraph = () => Promise.all([
 // Draws the page for these commits; does nothing when they are the ones already shown, so that a
 // check without news does not disturb a popup.
 let lengthEdges = [];
-function show(d) {
+function show(d, e) {
   lengthEdges = d.length_edges || [];
-  const latest = d.commits.map(c => ({ ...c, decls: c.theorems + c.defs }));
+  const withDecls = cs => cs.map(c => ({ ...c, decls: c.theorems + c.defs }));
+  const latest = withDecls(d.commits);
   if (!latest.length || latest[latest.length - 1].sha === commits[commits.length - 1]?.sha) return;
   commits = latest;
+  // counted the same way only when of the same version
+  earlier = e?.version === d.version ? withDecls(e.commits) : [];
+  series = [...earlier, ...commits];
   render();
   renderCompare();
 }
 // A fresh query string bypasses the CDN cache of GitHub Pages.
-const loadData = () => fetch("data.json?t=" + Date.now(), { cache: "no-store" }).then(r => r.json()).then(show).catch(() => {});
+// The earlier history changes only with collect.py's VERSION: loaded once.
+const earlierData = fetch("earlier.json").then(r => r.json()).catch(() => null);
+const loadData = () => Promise.all([fetch("data.json?t=" + Date.now(), { cache: "no-store" }).then(r => r.json()), earlierData])
+  .then(([d, e]) => show(d, e)).catch(() => {});
 loadData();
 loadGraph();
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (commits.length) render(); renderGraph(); renderCompare(); });

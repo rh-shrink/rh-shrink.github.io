@@ -25,6 +25,10 @@ concurrency:
 
 env:
   SOURCE: https://github.com/leanprover-community/riemann-hypothesis
+  # The earlier history, before main was replaced on 2026-11-25 (by the readable edition of
+  # grh-lean): main up to this commit, still on the branch alpoge. The page shows it before main
+  # (site/earlier.json, measured again only when collect.py's VERSION changes).
+  EARLIER: 756a70250dcba9162b99d4ea35c186558434c17e
   # Up to three attempts, for brief network failures.
   RETRY: 'retry() { for i in 1 2 3; do "$@" && return 0; echo "attempt $i failed: $*" >&2; sleep 15; done; return 1; }'
 
@@ -50,6 +54,9 @@ jobs:
           # Data of another version is measured again (collect.py VERSION).
           last=$(python3 -c 'import json, collect; d = json.load(open("site/data.json")); c = d["commits"]; print(c[-1]["sha"] if c and d.get("version") == collect.VERSION else "")')
           echo "source main: $head, last measured: $last"
+          earlier=$(python3 -c 'import json, collect; d = json.load(open("site/earlier.json")); print("current" if d.get("version") == collect.VERSION and d["commits"][-1]["sha"] == "${{ env.EARLIER }}" else "stale")' 2>/dev/null || echo stale)
+          echo "earlier history: $earlier"
+          echo "earlier=$earlier" >> "$GITHUB_OUTPUT"
           # The page shows "polled" as "last at" (any run), and warns when "scheduled" is over 30 min
           # old: the start of the last run of the timer (cron-job.org's dispatches, or GitHub's
           # schedule), from GitHub's run list, which includes this run. (Carrying it over from the
@@ -72,7 +79,7 @@ jobs:
           fi
           echo "import graph: $graph"
           echo "graph=$graph" >> "$GITHUB_OUTPUT"
-          echo "new=$([ "$head" != "$last" ] || [ "$graph" = stale ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "new=$([ "$head" != "$last" ] || [ "$graph" = stale ] || [ "$earlier" = stale ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
       # numpy for graph.py, Pillow for card.py
       - name: Python packages
@@ -89,6 +96,10 @@ jobs:
           clone() { rm -rf "$RUNNER_TEMP/source.git"; git clone --quiet --bare --single-branch --branch main "$SOURCE" "$RUNNER_TEMP/source.git"; }
           retry clone
           "$RUNNER_TEMP/venv/bin/python" collect.py "$RUNNER_TEMP/source.git" site/data.json
+          if [ "${{ steps.check.outputs.earlier }}" = stale ]; then
+            retry git -C "$RUNNER_TEMP/source.git" fetch --quiet "$SOURCE" "$EARLIER"
+            "$RUNNER_TEMP/venv/bin/python" collect.py "$RUNNER_TEMP/source.git" site/earlier.json --ref "$EARLIER"
+          fi
 
       - name: Commit data
         id: commit
@@ -97,11 +108,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           # GitHub disables scheduled workflows after 60 days without repository activity.
-          if git diff --quiet site/data.json && [ $(( $(date +%s) - $(git log -1 --format=%ct) )) -gt 2592000 ]; then
+          if git diff --quiet site/data.json site/earlier.json && [ $(( $(date +%s) - $(git log -1 --format=%ct) )) -gt 2592000 ]; then
             date -u +%FT%TZ > .heartbeat
             git add .heartbeat
           fi
-          git add site/data.json
+          git add site/data.json site/earlier.json
           if git diff --cached --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
