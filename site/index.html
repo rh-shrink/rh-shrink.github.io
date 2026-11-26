@@ -985,7 +985,9 @@ function renderCompare() {
   const names = ROWS.map(r => (innerWidth < 600 ? r.short : r.label.replace(/ (?=\S+ \S+$)| (?=[^ ]+$)/, "\n").split("\n")));
   const card = document.getElementById("c-compare");
   card.hidden = false;
-  const top = Math.max(...[first, last].flatMap(v => points(v).map(p => p.y)));
+  const ys = [first, last].flatMap(v => points(v).map(p => p.y));
+  // the axis: from the decade below the smallest ratio (at most 0.5x) to twice the largest
+  const top = Math.max(...ys), bottom = Math.min(0.5, 10 ** Math.floor(Math.log10(Math.min(...ys.filter(y => y > 0)))));
   // Bars growing from Mathlib's 1x (up: more than in Mathlib), originally and now side by side.
   const baseline = {
     id: "baseline",
@@ -994,10 +996,17 @@ function renderCompare() {
       ctx.save();
       ctx.strokeStyle = css("--text-primary"); ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.moveTo(a.left, one); ctx.lineTo(a.right, one); ctx.stroke();
-      // a row's note above its bars, centred, wrapped to the width of its group of bars
+      // a row's note above its bars and the baseline, centred, wrapped to the width of its group
+      // of bars; "none" where a value is zero, which has no bar on a log scale
       ctx.fillStyle = css("--text-secondary"); ctx.font = "11px " + Chart.defaults.font.family;
       ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
       const groups = chart.scales.x;
+      // (once, centred, when all bars of a row are zero)
+      ROWS.forEach((r, i) => {
+        const zero = chart.data.datasets.map((ds, k) => ds.points[i].v === 0 && chart.getDatasetMeta(k).data[i]);
+        if (zero.every(Boolean)) ctx.fillText("none", groups.getPixelForValue(i), one - 6);
+        else zero.filter(Boolean).forEach(el => ctx.fillText("none", el.x, one - 6));
+      });
       ROWS.forEach((r, i) => {
         if (!r.note) return;
         const els = chart.data.datasets.map((ds, k) => chart.getDatasetMeta(k).data[i]);
@@ -1008,7 +1017,7 @@ function renderCompare() {
           if (ctx.measureText(next).width > width && lines[lines.length - 1]) lines.push(w);
           else lines[lines.length - 1] = next;
         }
-        const top = Math.min(...els.map(el => el.y)) - 8;
+        const top = Math.min(one, ...els.map(el => el.y)) - 8;
         lines.forEach((l, k) => ctx.fillText(l, x, top - 14 * (lines.length - 1 - k)));
       });
       ctx.restore();
@@ -1025,13 +1034,13 @@ function renderCompare() {
       interaction: { mode: "index", intersect: false },
       layout: { padding: { top: 6 } },
       scales: {
-        y: { type: "logarithmic", min: 0.5, max: 2 * top, grid: { color: grid }, border: { display: false },
+        y: { type: "logarithmic", min: bottom, max: 2 * Math.max(top, 1), grid: { color: grid }, border: { display: false },
              afterBuildTicks: scale => { scale.ticks = scale.ticks.filter(t => Number.isInteger(Math.log10(t.value))); },  // decades only
              // (not on narrow screens: the bars' names need the room there)
              title: { display: innerWidth >= 600, text: "times as frequent as in Mathlib", color: muted },
              // the baseline's tick names Mathlib
              ticks: { color: c => (c.tick?.value === 1 ? css("--text-primary") : muted),
-                      callback: v => (v === 1 ? ["1×", "Mathlib"] : compact.format(v) + "×") } },
+                      callback: v => (v === 1 ? ["1×", "Mathlib"] : (v < 1 ? String(v) : compact.format(v)) + "×") } },
         x: { grid: { display: false }, border: { display: false },
              ticks: { color: css("--text-secondary"), maxRotation: 0, autoSkip: false } },
       },
